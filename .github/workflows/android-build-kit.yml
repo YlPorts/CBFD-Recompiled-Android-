@@ -1,0 +1,72 @@
+name: Android ROM-free build kit
+on:
+  workflow_dispatch:
+  push:
+    branches: [android/direct-boot-60fps]
+    paths: [.github/workflows/android-build-kit.yml]
+permissions:
+  contents: read
+jobs:
+  sources:
+    name: Pinned sources and host recompilers (no ROM)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install host build prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ninja-build cmake g++ binutils-mips-linux-gnu python3-pip python3-venv
+      - name: Apply the original Conker patches
+        run: |
+          git -C tools/N64Recomp apply "$GITHUB_WORKSPACE/recomp/n64recomp.patch"
+          git -C tools/N64ModernRuntime apply "$GITHUB_WORKSPACE/recomp/n64modernruntime.patch"
+          git -C tools/rt64 apply "$GITHUB_WORKSPACE/recomp/rt64.patch"
+          python3 android/tools/prepare.py --dependencies
+      - name: Build native host recompilers
+        run: |
+          cmake -S tools/N64Recomp -B tools/N64Recomp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS='-static-libstdc++ -static-libgcc' -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          cmake --build tools/N64Recomp/build --target N64RecompCLI RSPRecomp --parallel 2
+      - name: Collect offline Python and MIPS tools
+        run: |
+          mkdir -p offline/wheels offline/debs offline/bin
+          python3 -m pip download -r requirements.txt -d offline/wheels
+          cd offline/debs
+          apt-get download binutils-mips-linux-gnu
+          for f in *.deb; do dpkg-deb -x "$f" ../mips; done
+          cd ../..
+          cp tools/N64Recomp/build/N64Recomp tools/N64Recomp/build/RSPRecomp offline/bin/
+          git rev-parse HEAD > offline/SOURCE_COMMIT
+          git submodule status --recursive > offline/SUBMODULE_REVISIONS
+      - name: Archive source and build kit without private inputs
+        run: |
+          rm -rf tools/N64Recomp/build
+          mkdir -p "$RUNNER_TEMP/output"
+          tar --exclude='.git' --exclude='*.z64' --exclude='*.n64' --exclude='*.v64' --exclude='*.jks' --exclude='*.keystore' --exclude='*.apk' --exclude='RecompiledFuncs' --exclude='offline/debs' -czf "$RUNNER_TEMP/output/cbfd-source-kit.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbfd-source-kit
+          path: ${{ runner.temp }}/output/cbfd-source-kit.tar.gz
+          retention-days: 7
+          compression-level: 0
+  toolchain:
+    name: Local Android toolchain preparation (no game)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - name: Install the requested Android toolchain
+        run: |
+          sdkmanager 'ndk;28.0.13004108' 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Archive the local compilation tools
+        run: |
+          mkdir -p "$RUNNER_TEMP/output"
+          tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/output/cbfd-android-toolchain.tar.gz" ndk/28.0.13004108 platforms/android-35 build-tools/35.0.0 licenses
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbfd-android-toolchain
+          path: ${{ runner.temp }}/output/cbfd-android-toolchain.tar.gz
+          retention-days: 1
+          compression-level: 0
