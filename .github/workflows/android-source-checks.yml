@@ -28,6 +28,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-35'
       - run: python3 android/tools/prepare.py --dependencies
       - name: Compile the actual activity and controls against Android/SDL
