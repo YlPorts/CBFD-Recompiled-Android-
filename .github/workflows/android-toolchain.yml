@@ -1,0 +1,38 @@
+name: Android ARM64 toolchain
+on:
+  workflow_dispatch:
+  push:
+    branches: [android/direct-boot-60fps]
+    paths: [.github/workflows/android-toolchain.yml]
+permissions:
+  contents: read
+jobs:
+  toolchain:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+          log-accepted-android-sdk-licenses: false
+      - name: Install native and packaging tools
+        run: sdkmanager 'ndk;28.0.13004108' 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Package local ARM64 build tools, not a game
+        run: |
+          mkdir -p "$RUNNER_TEMP/output"
+          tar -C "$ANDROID_HOME" \
+            --exclude='arm-linux-androideabi' --exclude='i686-linux-android' --exclude='x86_64-linux-android' \
+            --exclude='riscv64-linux-android' --exclude='simpleperf' \
+            -czf "$RUNNER_TEMP/output/cbfd-android-toolchain.tar.gz" \
+            ndk/28.0.13004108 platforms/android-35 build-tools/35.0.0 licenses
+          ls -lh "$RUNNER_TEMP/output/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbfd-android-toolchain
+          path: ${{ runner.temp }}/output/cbfd-android-toolchain.tar.gz
+          retention-days: 1
+          compression-level: 0
