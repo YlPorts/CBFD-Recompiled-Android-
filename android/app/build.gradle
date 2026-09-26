@@ -1,0 +1,36 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.ylports.cbfd'
+    compileSdk 35
+    ndkVersion '28.0.13004108'
+    defaultConfig {
+        applicationId 'com.ylports.cbfd'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0-dev'
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_shared' } }
+    }
+    sourceSets.main.java.srcDir '../.deps/SDL/android-project/app/src/main/java'
+    externalNativeBuild { cmake { path '../CMakeLists.txt'; version '3.22.1' } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes {
+        release { minifyEnabled false }
+        debug { jniDebuggable true }
+    }
+    packaging { jniLibs { useLegacyPackaging false } }
+}
+// Never produce a launcher-only APK and call it a game build.
+tasks.register('requireGameSources') {
+    doLast {
+        def generated = file('../../RecompiledFuncs/inputs.sha256')
+        if (!generated.isFile()) {
+            throw new GradleException('Falta RecompiledFuncs: genera el juego con tu ROM USA mediante recomp/run.sh. No se genera una APK vacía.')
+        }
+        if (!file('../.deps/SDL/CMakeLists.txt').isFile()) {
+            throw new GradleException('Falta SDL: ejecuta python3 android/tools/prepare.py --dependencies')
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'requireGameSources' }
