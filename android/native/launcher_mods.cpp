@@ -1,7 +1,9 @@
 // JNI bridge for the PC librecomp mod scanner/config used by the Android launcher.
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <jni.h>
 #include "librecomp/mods.hpp"
