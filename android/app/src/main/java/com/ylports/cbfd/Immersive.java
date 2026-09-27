@@ -15,8 +15,9 @@ final class Immersive {
             View decor = window.getDecorView();
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             WindowManager.LayoutParams attributes = window.getAttributes();
-            boolean changed = attributes.preferredRefreshRate != 60.0f;
-            attributes.preferredRefreshRate = 60.0f;
+            float preferred = PcSettings.preferredRefreshRate(activity);
+            boolean changed = attributes.preferredRefreshRate != preferred;
+            attributes.preferredRefreshRate = preferred;
             if (Build.VERSION.SDK_INT >= 28) {
                 changed |= attributes.layoutInDisplayCutoutMode != WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
                 attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
