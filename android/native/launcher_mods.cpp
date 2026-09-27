@@ -58,7 +58,8 @@ Java_com_ylports_cbfd_LauncherMods_nativeList(JNIEnv* env,jclass,jstring statePa
                 {"enabled",modContext->is_mod_enabled(mod.mod_id)},
                 {"toggleable",mod.runtime_toggleable},
                 {"defaultEnabled",mod.enabled_by_default},
-                {"customGamemode",mod.custom_gamemode}
+                {"customGamemode",mod.custom_gamemode},
+                {"file",modContext->get_mod_filename(mod.mod_id).filename().string()}
             });
         }
         const std::string result=root.dump();
