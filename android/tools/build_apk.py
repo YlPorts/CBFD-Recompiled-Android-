@@ -109,6 +109,10 @@ def main() -> None:
         for f in sorted((ANDROID/'app/src/main/assets').rglob('*')):
             if f.is_file():
                 z.write(f, 'assets/' + f.relative_to(ANDROID/'app/src/main/assets').as_posix(), compress_type=zipfile.ZIP_DEFLATED)
+        # Reuse the exact PC 0.1.2 launcher thumbnail; do not duplicate/recreate it.
+        pc_thumbnail = ROOT/'host/assets/thumbnail.png'
+        if pc_thumbnail.is_file():
+            z.write(pc_thumbnail, 'assets/pc/thumbnail.png', compress_type=zipfile.ZIP_DEFLATED)
         for f in sorted((stage/'dex').glob('*.dex')): z.write(f, f.name,compress_type=zipfile.ZIP_DEFLATED)
         for name,f in libs.items():
             copy=stage/'lib/arm64-v8a'/name
