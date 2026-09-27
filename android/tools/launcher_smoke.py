@@ -34,6 +34,18 @@ def main() -> None:
         while time.monotonic() < deadline:
             try:
                 root = capture(name)
+                # A fresh Android image may display its fullscreen tutorial when
+                # returning from DocumentsUI. Dismiss only this identified system
+                # tutorial, not app errors, runtime permissions or arbitrary dialogs.
+                nodes = list(root.iter('node'))
+                tutorial = any(n.get('resource-id', '') == 'com.android.systemui:id/immersive_cling_title' for n in nodes)
+                buttons = [n for n in nodes if n.get('resource-id', '') == 'com.android.systemui:id/ok']
+                if tutorial and buttons:
+                    bounds = list(map(int, re.findall(r'\d+', buttons[0].get('bounds', ''))))
+                    if len(bounds) == 4:
+                        adb('shell', 'input', 'tap', str((bounds[0]+bounds[2])//2), str((bounds[1]+bounds[3])//2))
+                        time.sleep(1)
+                        continue
                 if predicate(root):
                     return root
             except (subprocess.SubprocessError, ET.ParseError, OSError) as error:
