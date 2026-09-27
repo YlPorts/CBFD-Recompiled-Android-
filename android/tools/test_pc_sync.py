@@ -57,6 +57,30 @@ def main():
     assert "build=pc-012-direct" in host
     print("PASS Android native host identifies PC project_version 0.1.2")
 
+    settings=(ROOT/"android/app/src/main/java/com/ylports/cbfd/PcSettings.java").read_text()
+    defaults=(
+        'get(c,"resolution",2)', 'get(c,"downsampling",0)', 'get(c,"aspect",1)',
+        'get(c,"refresh",1)', 'get(c,"refreshValue",60)', 'get(c,"msaa",1)',
+        'get(c,"hud",1)', 'get(c,"hpfb",2)'
+    )
+    for value in defaults:
+        assert value in settings,f"Android UI diverged from RecompFrontend PC 0.1.2 default: {value}"
+    print("PASS RecompFrontend PC 0.1.2 defaults mirrored in Android Settings")
+
+    for mapping in (
+        "SDL_CONTROLLER_BUTTON_A, 0x8000",
+        "SDL_CONTROLLER_BUTTON_X, 0x4000",
+        "SDL_CONTROLLER_BUTTON_LEFTSHOULDER, 0x0020",
+        "SDL_CONTROLLER_AXIS_TRIGGERLEFT",
+        "SDL_CONTROLLER_AXIS_TRIGGERRIGHT",
+        "SDL_CONTROLLER_BUTTON_Y",
+        "SDL_CONTROLLER_BUTTON_B",
+        "SDL_CONTROLLER_BUTTON_RIGHTSTICK",
+        "SDL_CONTROLLER_BUTTON_RIGHTSHOULDER",
+    ):
+        assert mapping in host,f"PC 0.1.2 controller default missing in Android host: {mapping}"
+    print("PASS RecompFrontend PC 0.1.2 controller defaults mirrored")
+
     source=ast.parse((ROOT/"recomp/recompile.py").read_text())
     expected=next(ast.literal_eval(node.value) for node in source.body
                   if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="RECOMP_INPUTS" for t in node.targets))
