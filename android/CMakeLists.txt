@@ -67,6 +67,7 @@ add_library(main SHARED
     native/android_host.cpp
     native/rt64_renderer.cpp
     native/audio_output.cpp
+    native/launcher_mods.cpp
     "${ROOT}/host/src/overlays.cpp"
     "${ROOT}/host/src/ultra_extras.cpp"
     "${ROOT}/host/src/mod_api.cpp"
