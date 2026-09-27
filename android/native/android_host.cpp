@@ -18,6 +18,7 @@
 #include "conker.hpp"
 #include "mobile_profile.hpp"
 #include "mobile_camera.hpp"
+#include "mobile_diagnostics.hpp"
 #include "surface_lifecycle.hpp"
 #include <android/native_window_jni.h>
 #include "rt64_storage.hpp"
@@ -157,6 +158,14 @@ extern "C" JNIEXPORT void JNICALL Java_com_ylports_cbfd_GameActivity_nativeCamer
 extern "C" JNIEXPORT void JNICALL Java_com_ylports_cbfd_GameActivity_nativeRequestQuit(JNIEnv*, jclass) {
     ultramodern::quit();
 }
+extern "C" JNIEXPORT jstring JNICALL Java_com_ylports_cbfd_GameActivity_nativeCaptureDiagnostics(JNIEnv* env, jclass) {
+    try {
+        const std::string snapshot = conker::mobile::diagnostics.request();
+        return env->NewStringUTF(snapshot.c_str());
+    } catch (const std::exception&) {
+        return env->NewStringUTF("[render-capture] unavailable; failed to allocate capture\n");
+    }
+}
 
 extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** argv) {
     try {
@@ -174,8 +183,8 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         setvbuf(stderr, nullptr, _IOLBF, 0);
         dup2(fileno(stderr), STDOUT_FILENO);
         setvbuf(stdout, nullptr, _IOLBF, 0);
-        std::ofstream(state / "running.marker") << "Conker Android 0.1.12-alpha\n";
-        std::fprintf(stderr, "[startup] Conker Android 0.1.12-alpha ARM64; build=visibility-workers-012; target=60; aspect=Expand; internal=fixed1080; noDRS\n");
+        std::ofstream(state / "running.marker") << "Conker Android 0.1.13-alpha\n";
+        std::fprintf(stderr, "[startup] Conker Android 0.1.13-alpha ARM64; build=texture-capture-013; target=60; aspect=Expand; internal=fixed1080; noDRS\n");
         // Validate storage on SDL_main before spawning RT64's graphics thread.
         // This uses --data from Android getFilesDir(), never HOME or /data.
         const auto renderer_path = conker::android::rt64_data_path(state);
@@ -209,7 +218,7 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         char* args[] = {program, flag, name, nullptr};
         recomp::Configuration cfg{};
         cfg.argc = 3; cfg.argv = args;
-        cfg.project_version = recomp::Version{0, 1, 10};
+        cfg.project_version = recomp::Version{0, 1, 13};
         cfg.rsp_callbacks.get_rsp_microcode = rsp;
         cfg.audio_callbacks = {conker::audio::queue_samples, conker::audio::get_frames_remaining, conker::audio::set_frequency};
         cfg.renderer_callbacks.create_render_context = create_android_renderer;

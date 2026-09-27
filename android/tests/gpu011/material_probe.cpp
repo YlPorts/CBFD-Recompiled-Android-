@@ -24,7 +24,7 @@ static std::vector<char> read(const std::string& p) {
     return {std::istreambuf_iterator<char>(f), {}};
 }
 int main(int argc, char** argv) { try {
-    if (argc != 2) throw std::runtime_error("Expected shader directory");
+    if (argc != 2 && argc != 3) throw std::runtime_error("Expected shader directory and optional filter regression");
     auto iface = CreateVulkanInterface(); auto device = iface->createDevice();
     if (!device || !device->getCapabilities().dualSourceBlend) throw std::runtime_error("PC comparison needs dual-source Vulkan support");
     auto queue = device->createCommandQueue(RenderCommandListType::DIRECT);
@@ -65,7 +65,7 @@ int main(int argc, char** argv) { try {
     };
     constexpr unsigned W = 16, H = 16;
     interop::FrameParams frame{}; bind(0, 0, frame, true);
-    interop::RDPParams rdp{}; rdp.primColor = interop::float4(1,1,1,1); bind(0, 1, rdp);
+    interop::RDPParams rdp{}; rdp.primColor = interop::float4(1,1,1,1); auto rdpBuffer = bind(0, 1, rdp);
     interop::RDPTile tile{}; tile.shifts = tile.shiftt = 1; tile.masks = tile.maskt = 4;
     tile.lrs = tile.lrt = 12; tile.cms = tile.cmt = G_TX_CLAMP;
     auto tileBuffer = bind(0, 2, tile);
@@ -84,7 +84,8 @@ int main(int argc, char** argv) { try {
     bind(3, 0, fp, true);
     std::vector<std::unique_ptr<RenderSampler>> samplers;
     for (unsigned i = 0; i < 18; ++i) {
-        RenderSamplerDesc d; d.addressU = d.addressV = RenderTextureAddressMode::CLAMP;
+        const RenderTextureAddressMode modes[] = {RenderTextureAddressMode::WRAP, RenderTextureAddressMode::MIRROR, RenderTextureAddressMode::CLAMP};
+        RenderSamplerDesc d; d.addressU = modes[(i%9)/3]; d.addressV = modes[i%3];
         d.anisotropyEnabled = false; if (i >= 9) d.minFilter = d.magFilter = RenderFilter::NEAREST;
         auto s = device->createSampler(d); descriptors[0]->setSampler(i+6, s.get()); samplers.push_back(std::move(s));
     }
@@ -182,6 +183,66 @@ int main(int argc, char** argv) { try {
         auto occluded=draw(false,.2f);
         for (unsigned i=0;i<W*H;++i) check(occluded[i*4]==51 && occluded[i*4+1]==102 && occluded[i*4+2]==153 && occluded[i*4+3]==3,"material leaks through foreground depth");
     }
-    std::cout << "Full RasterPS Vulkan: " << cases << " texture/alpha/LOD/depth cases, " << checks << " checks, " << errors << " discrepancies (2/255 tolerance)\n";
+    if (argc == 3) {
+        auto referencePS = shader("reference", "PSMain");
+        std::array<std::unique_ptr<RenderPipeline>,2> referencePipelines;
+        for (bool blend : {false,true}) {
+            RT64::PipelineCreation c{}; c.device=device.get(); c.pipelineLayout=layout.get(); c.vertexShader=vs.get();
+            c.pixelShader=referencePS.get(); c.alphaBlend=blend; c.zCmp=true; c.zUpd=!blend; c.NoN=false;
+            referencePipelines[blend]=RT64::RasterShader::createPipeline(c);
+        }
+        // Spatially varying color AND alpha, including transparent texels. Constant mip
+        // colors alone cannot detect selecting the wrong triangle/corner at a seam.
+        std::array<unsigned char,64> pattern{};
+        for (unsigned i=0;i<16;++i) {
+            pattern[i*4]=(i*71)%256; pattern[i*4+1]=(i*109+31)%256;
+            pattern[i*4+2]=(i*47+19)%256; pattern[i*4+3]=(i*85)%256;
+        }
+        auto patternUpload=upload(pattern.data(),pattern.size());
+        cmd->begin(); cmd->barriers(RenderBarrierStage::COPY,RenderTextureBarrier(texture.get(),RenderTextureLayout::COPY_DEST));
+        vkCmdCopyBufferToImage(static_cast<VulkanCommandList*>(cmd.get())->vk,static_cast<VulkanBuffer*>(patternUpload)->vk,
+            static_cast<VulkanTexture*>(texture.get())->vk,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,copies.data());
+        cmd->barriers(RenderBarrierStage::GRAPHICS,RenderTextureBarrier(texture.get(),RenderTextureLayout::SHADER_READ)); submit();
+        gpu.flags.hasMipmaps=false; update(gpuBuffer,gpu);
+        tile.shifts=tile.shiftt=1; rdp.blendColor.w=.5f; update(rdpBuffer,rdp);
+        unsigned filterCases=0, filterErrors=0;
+        const unsigned modes[] = {G_TX_WRAP,G_TX_MIRROR,G_TX_CLAMP};
+        for (unsigned u=0;u<3;++u) for (unsigned v=0;v<3;++v) for (bool native : {false,true})
+        for (unsigned filter : {G_TF_POINT,G_TF_BILERP,G_TF_AVERAGE}) for (bool linear : {false,true})
+        for (unsigned alphaMode=0;alphaMode<3;++alphaMode) for (float offset : {-.5f,-.25f,.125f,.5f}) {
+            ++cases; ++filterCases;
+            tile.cms=modes[u]; tile.cmt=modes[v]; tile.nativeSampler=native?NATIVE_SAMPLER_WRAP_WRAP+u*3+v:NATIVE_SAMPLER_NONE;
+            update(tileBuffer,tile);
+            bool blend=alphaMode!=0;
+            rp.omH=G_TP_PERSP|G_CYC_1CYCLE|filter;
+            rp.omL=Z_CMP|(blend?FORCE_BL|(0x40U<<16):Z_UPD|G_AC_THRESHOLD)|(alphaMode==2?CVG_X_ALPHA:0);
+            rp.flags.linearFiltering=linear; update(rpBuffer,rp);
+            uvs={-4+offset,-4+offset, 12+offset,-4+offset, -4+offset,12+offset}; update(uv,uvs);
+            auto drawFilter=[&](RenderPipeline* pipeline) {
+                cmd->begin(); cmd->barriers(RenderBarrierStage::GRAPHICS,RenderTextureBarrier(color.get(),RenderTextureLayout::COLOR_WRITE));
+                cmd->barriers(RenderBarrierStage::GRAPHICS,RenderTextureBarrier(depth.get(),RenderTextureLayout::DEPTH_WRITE));
+                cmd->setFramebuffer(fb.get()); cmd->clearColor(0,RenderColor(.2f,.4f,.6f,3.f/255)); cmd->clearDepth(true,1);
+                cmd->setGraphicsPipelineLayout(layout.get());
+                for(unsigned i=0;i<4;++i) cmd->setGraphicsDescriptorSet(descriptors[i].get(),i);
+                interop::RasterParams constants{}; cmd->setGraphicsPushConstants(0,&constants);
+                cmd->setViewports(RenderViewport(0,0,W,H)); cmd->setScissors(RenderRect(0,0,W,H));
+                cmd->setVertexBuffers(0,views,3,RT64::RasterInputSlots);
+                cmd->setPipeline(pipeline); cmd->drawInstanced(3,1,0,0);
+                cmd->barriers(RenderBarrierStage::COPY,RenderTextureBarrier(color.get(),RenderTextureLayout::COPY_SOURCE));
+                VkBufferImageCopy r{};r.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};r.imageExtent={W,H,1};
+                vkCmdCopyImageToBuffer(static_cast<VulkanCommandList*>(cmd.get())->vk,static_cast<VulkanTexture*>(color.get())->vk,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,static_cast<VulkanBuffer*>(readback.get())->vk,1,&r);submit();
+                auto data=static_cast<const unsigned char*>(readback->map());
+                std::vector<unsigned char> result(data,data+W*H*4);readback->unmap();return result;
+            };
+            auto actual=drawFilter(pipelines[blend][2].get()), expected=drawFilter(referencePipelines[blend].get());
+            for(size_t i=0;i<actual.size();++i) {
+                bool same=std::abs(int(actual[i])-int(expected[i]))<=1;
+                filterErrors+=!same; check(same,"three-tap filtering differs from the pinned PC four-tap RGB/alpha reference");
+            }
+        }
+        std::cout<<"Filter regression: "<<filterCases<<" spatial/alpha/seam cases, "<<filterErrors<<" discrepancies (1/255 tolerance)\n";
+    }
+    std::cout << "Full RasterPS Vulkan: " << cases << " texture/alpha/LOD/depth cases, " << checks << " checks, " << errors << " discrepancies (2/255 tolerance; filter 1/255)\n";
     return errors?1:0;
 } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 2; } }

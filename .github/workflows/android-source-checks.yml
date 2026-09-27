@@ -86,6 +86,7 @@ jobs:
           python3 android/tools/test_render_010.py
           python3 android/tools/test_render_011.py
           python3 android/tools/test_shader_workers_012.py
+          python3 android/tools/test_diagnostics_013.py
           python3 android/tools/test_visibility_012.py
           python3 android/tools/test_mobile.py
           python3 android/tools/test_matcher_math.py
@@ -98,5 +99,6 @@ jobs:
           sudo apt-get install -y mesa-vulkan-drivers libx11-dev
           git -C tools/rt64 submodule update --init src/contrib/dxc
           git -C tools/rt64/src/contrib/plume submodule update --init contrib/volk contrib/VulkanMemoryAllocator
+          python3 android/tools/test_filter_013.py
           VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu018.py
-          VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu011.py
+          VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu011.py --filter-regression

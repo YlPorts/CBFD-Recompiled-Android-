@@ -166,7 +166,7 @@ def apply_011():
         raise
     print('0.1.11 wide framebuffer bounds and finite texture LOD layer applied.')
 
-def main():
+def apply_012():
     patch = ROOT / 'android/patches/visibility-workers-012.patch'
     def check(reverse=False):
         return subprocess.run(['git','apply',*(['--reverse'] if reverse else []),'--check',str(patch)],
@@ -184,6 +184,25 @@ def main():
             subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
         raise
     print('0.1.12 CPU-frustum aspect synchronization and shader-worker lifecycle layer applied.')
+
+def main():
+    patch = ROOT / 'android/patches/texture-capture-013.patch'
+    def check(reverse=False):
+        return subprocess.run(['git','apply',*(['--reverse'] if reverse else []),'--check',str(patch)],
+            cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode == 0
+    removed = check(True)
+    if removed:
+        subprocess.run(['git','apply','--reverse',str(patch)],cwd=ROOT,check=True)
+    try:
+        apply_012()
+        if not check():
+            raise SystemExit('0.1.13 dependencies differ; refusing to overwrite local changes.')
+        subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+    except BaseException:
+        if removed and check():
+            subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+        raise
+    print('0.1.13 three-tap texture filtering and requested draw-capture layer applied.')
 
 if __name__ == '__main__':
     main()

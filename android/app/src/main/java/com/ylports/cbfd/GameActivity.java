@@ -21,6 +21,7 @@ public final class GameActivity extends SDLActivity {
     private static native void nativeSurface(Surface surface, int width, int height);
     private static native void nativeForeground(boolean active);
     private static native void nativeRequestQuit();
+    private static native String nativeCaptureDiagnostics();
     @Override protected String[] getLibraries() { return new String[] {"c++_shared", "SDL2", "main"}; }
     @Override protected String getMainSharedObject() {
         // These libraries are mapped from the APK; nativeLibraryDir may have no files.
@@ -59,7 +60,7 @@ public final class GameActivity extends SDLActivity {
                 nativeSurface(holder.getSurface(),width,height);
                 applyRate(holder);
                 StartupDiagnostics.log("Native Surface="+width+"x"+height+"; fixed1080; displayHz="+
-                    getWindowManager().getDefaultDisplay().getRefreshRate()+"; lifecycle publish; build=visibility-workers-012");
+                    getWindowManager().getDefaultDisplay().getRefreshRate()+"; lifecycle publish; build=texture-capture-013");
                 super.surfaceChanged(holder,format,width,height);
             }
             @Override public void surfaceDestroyed(SurfaceHolder holder) {
@@ -73,6 +74,7 @@ public final class GameActivity extends SDLActivity {
     private void copyLiveDiagnostics() {
         // Read the private tail off the UI/game threads; copy only after the user's long press.
         new Thread(()->{
+            StartupDiagnostics.capture(nativeCaptureDiagnostics());
             String report=StartupDiagnostics.report();
             runOnUiThread(()->{
                 if(isFinishing()||isDestroyed()) return;

@@ -19,11 +19,12 @@ final class TouchControls extends View {
     private float insetLeft,insetRight,insetTop,insetBottom;
     private int sentMask;
     private float sentX,sentY,sentCameraX,sentCameraY;
-    private boolean diagnosticPending;
+    private final StartGesture startGesture=new StartGesture();
     private static final String[] LABEL={"A","B","Z","L","R","START"};
     private static final int[] ACCENT={0xff8cc3f5,0xff91d4a0,0xffdae0e8,0xffd5dce4,0xffd5dce4,0xffd5dce4,
         0xffebcd87,0xffebcd87,0xffebcd87,0xffebcd87};
     private final Runnable longStart;
+    private final Runnable releaseStartPulse=()->{startGesture.endPulse();sendInput();};
     TouchControls(Context context,Runnable copyDiagnostics) {
         this(context,copyDiagnostics,GameActivity::nativeInput,GameActivity::nativeCamera);
     }
@@ -33,8 +34,7 @@ final class TouchControls extends View {
     TouchControls(Context context,Runnable copyDiagnostics,InputSink sink,CameraSink cameraSink) {
         super(context);diagnostics=copyDiagnostics;input=sink;camera=cameraSink;setFocusable(false);
         longStart=()->{
-            diagnosticPending=false;
-            if(layout.mask==TouchLayout.BITS[TouchLayout.START] && layout.pointerCount()==1 && diagnostics!=null) diagnostics.run();
+            if(startGesture.capture() && diagnostics!=null) diagnostics.run();
         };
         setContentDescription("Controles: palanca izquierda para moverse, palanca derecha para cámara orbital analógica, A B Z. Mantener START copia el diagnóstico.");
         paint.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
@@ -66,26 +66,30 @@ final class TouchControls extends View {
             if((action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_POINTER_UP)&&i==index) layout.up(id);
             else layout.move(id,event.getX(i),event.getY(i));
         }
-        boolean onlyStart=layout.mask==TouchLayout.BITS[TouchLayout.START]&&layout.pointerCount()==1;
-        if(onlyStart&&!diagnosticPending && (action==MotionEvent.ACTION_DOWN||action==MotionEvent.ACTION_POINTER_DOWN)) {
-            diagnosticPending=true;postDelayed(longStart,1400);
-        } else if(!onlyStart) { removeCallbacks(longStart);diagnosticPending=false; }
+        boolean wasWaiting=startGesture.waiting(),wasPulse=startGesture.pulse();
+        startGesture.update(layout.mask,layout.pointerCount(),
+            action==MotionEvent.ACTION_DOWN||action==MotionEvent.ACTION_POINTER_DOWN,
+            action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_POINTER_UP);
+        if(startGesture.waiting()&&!wasWaiting) postDelayed(longStart,1400);
+        else if(!startGesture.waiting()) removeCallbacks(longStart);
+        if(startGesture.pulse()&&!wasPulse) postDelayed(releaseStartPulse,100);
         sendInput();postInvalidateOnAnimation();return true;
     }
     private void sendInput() {
+        final int buttons=startGesture.filter(layout.mask);
         if(layout.cameraAxisX!=sentCameraX || layout.cameraAxisY!=sentCameraY) {
             camera.accept(layout.cameraAxisX,layout.cameraAxisY);
             sentCameraX=layout.cameraAxisX;sentCameraY=layout.cameraAxisY;
         }
         // Quantize below the N64 stick's precision; never drop button edges.
-        if(layout.mask!=sentMask||Math.abs(layout.axisX-sentX)>1f/512||Math.abs(layout.axisY-sentY)>1f/512
+        if(buttons!=sentMask||Math.abs(layout.axisX-sentX)>1f/512||Math.abs(layout.axisY-sentY)>1f/512
             ||(layout.axisX==0&&sentX!=0)||(layout.axisY==0&&sentY!=0)) {
-            input.accept(layout.mask,layout.axisX,layout.axisY);
-            sentMask=layout.mask;sentX=layout.axisX;sentY=layout.axisY;
+            input.accept(buttons,layout.axisX,layout.axisY);
+            sentMask=buttons;sentX=layout.axisX;sentY=layout.axisY;
         }
     }
     void releaseAll() {
-        removeCallbacks(longStart);diagnosticPending=false;layout.release();sendInput();invalidate();
+        removeCallbacks(longStart);removeCallbacks(releaseStartPulse);startGesture.cancel();layout.release();sendInput();invalidate();
     }
     @Override protected void onDetachedFromWindow() { releaseAll();super.onDetachedFromWindow(); }
     @Override protected void onDraw(Canvas canvas) {
