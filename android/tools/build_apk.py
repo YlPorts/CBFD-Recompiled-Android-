@@ -17,8 +17,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 ANDROID = ROOT / 'android'
-VERSION = '0.1.14-alpha'
-VERSION_CODE = '15'
+VERSION = '0.1.15-alpha'
+VERSION_CODE = '16'
 
 def run(*args: object) -> None:
     subprocess.run([str(a) for a in args], check=True, cwd=ROOT)
@@ -33,7 +33,7 @@ def main() -> None:
     p.add_argument('--skip-native-build', action='store_true', help='Package already compiled real libraries')
     p.add_argument('--native-apk', type=Path, help='Reuse the real engine from a previously signed ARM64 APK for Java-only fixes')
     p.add_argument('--native-apk-sha256', help='Required SHA-256 of --native-apk; prevents accidentally using the wrong engine')
-    p.add_argument('--output', type=Path, default=ROOT / 'android/out/Conker-Recompiled-0.1.14-alpha-arm64.apk')
+    p.add_argument('--output', type=Path, default=ROOT / 'android/out/Conker-Recompiled-0.1.15-alpha-arm64.apk')
     a = p.parse_args()
     if not a.sdk:
         p.error('Set ANDROID_HOME or --sdk.')
@@ -85,12 +85,12 @@ def main() -> None:
     for f in libs.values():
         if not f.is_file(): p.error(f'Real native library missing: {f}; no launcher-only APK is produced.')
     main_bytes = libs['libmain.so'].read_bytes()
-    for marker in (b'gles-renderer-014', b'Java_com_ylports_cbfd_GameActivity_nativeCamera',
+    for marker in (b'mali-blend-015', b'Java_com_ylports_cbfd_GameActivity_nativeCamera',
                    b'Native orbital yaw/pitch applied', b'adaptive resolution OFF',
                    b'Java_com_ylports_cbfd_GameActivity_nativeSurface',
                    b'Java_com_ylports_cbfd_GameActivity_nativeForeground', b'[gpu-caps]', b'conker_original_frustum', b'[visibility-shaders]', b'Java_com_ylports_cbfd_GameActivity_nativeCaptureDiagnostics', b'[render-capture-end]'):
         if marker not in main_bytes:
-            p.error('This release requires the 0.1.14 native engine; an older APK cannot be relabeled.')
+            p.error('This release requires the 0.1.15 native engine; an older APK cannot be relabeled.')
     stage = ANDROID/'build-package'
     if stage.exists(): shutil.rmtree(stage)
     for d in ['resources','generated','classes','dex','lib/arm64-v8a']: (stage/d).mkdir(parents=True,exist_ok=True)
