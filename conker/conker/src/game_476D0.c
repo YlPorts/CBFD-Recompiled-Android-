@@ -220,19 +220,35 @@ void func_1501AF44(f32 *ulx, f32 *uly, f32 *lrx, f32 *lry) {
 
 #pragma GLOBAL_ASM("asm/nonmatchings/game_476D0/func_1501B0A0.s")
 
-// NON-MATCHING: computes two rotation sub-blocks (from unk74/unk78,
-// scaled by 0.5 and the D_80096900/D_80096904 constants) via
-// cosf/sinf and writes them into D_800BE628[arg0]'s unk88-unkB4
-// fields. The stale "JUSTREG" comment's reconstruction (including its
-// double-negation on unk88/unk94/unkA4/unkB0) was independently
-// verified correct against the raw asm.
+// Camera frustum side planes: from the camera's horizontal and vertical fields
+// of view (fovX and fovY, in degrees), writes the view-space normals of the
+// four side planes that world and object culling test against:
+//   unk88..unk90 (cos h, 0, -sin h) and unk94..unk9C (-cos h, 0, -sin h),
+//   unkA0..unkA8 (0, -cos v, -sin v) and unkAC..unkB4 (0, cos v, -sin v),
+// where h and v are the half angles. D_80096900/D_80096904 are pi/180.
+// arg0 is the camera's index in D_800BE628 (0x180-byte cameras). The
+// recompiled PC port hooks the end of it to widen the left/right pair for
+// widescreen (host/src/widescreen.cpp).
+// Would-be name: updateFrustumPlanes_1501B22C.
+//
+// NON-MATCHING (57 of 61 words; 2026-09-27): the version below matches every
+// instruction and register except four stack offsets. The pointer has to be
+// written `arg0 * 0x180 + (char *) D_800BE628` (index first) to get target's
+// t6/t7 roles. Separate single-use temps are required: any variable that lives
+// across both halves (angle, cosine, or both, with or without its own sine
+// variable) makes IDO keep it in a callee-saved $f20/$f22 instead of spilling.
+// But target spills BOTH halves' angle into 0x24(sp) and BOTH cosines into
+// 0x34(sp), while distinct variables get distinct homes (declaration order
+// only picks which half lands at 0x24/0x34; the other gets 0x20/0x30).
+// Block-scoped temps per half don't share homes either (and cost a nop).
+// Not tried yet: a 2-iteration loop IDO unrolls, or an inlined helper.
 // void func_1501B22C(s32 arg0) {
-//     struct259 *rec = (struct259 *) ((char *) D_800BE628 + arg0 * 0x180);
+//     struct259 *rec = (struct259 *) (arg0 * 0x180 + (char *) D_800BE628);
 //     f32 tmp0, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
 //
-//     tmp0 = rec->unk74 * 0.5f;
+//     tmp0 = rec->fovX * 0.5f;
 //     tmp7 = -tmp0;
-//     tmp5 = rec->unk78 * 0.5f;
+//     tmp5 = rec->fovY * 0.5f;
 //     tmp7 *= D_80096900;
 //     tmp3 = cosf(tmp7);
 //     tmp7 = sinf(tmp7);
@@ -255,14 +271,4 @@ void func_1501AF44(f32 *ulx, f32 *uly, f32 *lrx, f32 *lry) {
 //     rec->unkAC = 0.0f;
 //     rec->unkA4 = tmp4;
 // }
-// 59 vs target's 59 instructions - exact count match, same 64-byte
-// stack frame, and every register plays the identical role as
-// target's under the standard float-register alias table (f0=fv0,
-// f2=fv1, f8=ft2, f10=ft3, f12=fa0, f16=ft4, etc.) - splitting the
-// computation into separate named temps (tmp0..tmp7, matching the
-// stale comment's own style) rather than reusing 2-3 shared locals
-// was needed to avoid IDO choosing a callee-saved float register
-// (sdc1/ldc1-saved $f20) to hold a value across the cosf/sinf calls,
-// which target never does. Remaining gap is minor: a few local stack
-// slots land at different offsets within the same frame.
 #pragma GLOBAL_ASM("asm/nonmatchings/game_476D0/func_1501B22C.s")
