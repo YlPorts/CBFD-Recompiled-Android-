@@ -1,0 +1,26 @@
+name: Android software Vulkan test dependency
+on:
+  workflow_dispatch:
+  push:
+    branches: [android/pc-0.1.2-direct-port]
+    paths: [.github/workflows/android-vulkan-test-deps.yml]
+permissions:
+  contents: read
+jobs:
+  dependency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pinned Debian Mesa driver package (no game inputs)
+        shell: bash
+        run: |
+          mkdir -p output
+          curl --fail --location --retry 3 'https://deb.debian.org/debian/pool/main/m/mesa/mesa-vulkan-drivers_25.0.7-2%2Bdeb13u1_amd64.deb' -o output/mesa-vulkan-drivers.deb
+          echo 'caf2f7d296b7522efe74e40a74bce762a3ce84c33b53b5e54e1248ac2e0a13a5  output/mesa-vulkan-drivers.deb' | sha256sum -c -
+          sha256sum output/mesa-vulkan-drivers.deb > output/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mesa-test-driver
+          path: output/
+          retention-days: 1
+          compression-level: 0
