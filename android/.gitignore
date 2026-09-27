@@ -1,0 +1,17 @@
+.gradle/
+.cxx/
+**/build/
+local.properties
+*.jks
+*.keystore
+*.apk
+*.aab
+.deps/
+
+.host/
+build-native/
+build-package/
+out/
+*.jks
+*.keystore
+__pycache__/

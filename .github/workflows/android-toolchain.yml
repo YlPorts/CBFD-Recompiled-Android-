@@ -1,0 +1,56 @@
+name: Android ARM64 toolchain
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  toolchain:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+          log-accepted-android-sdk-licenses: false
+      - name: Install native and packaging tools
+        run: sdkmanager 'ndk;28.0.13004108' 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Archive and split ROM-free toolchain for local use
+        run: |
+          mkdir -p "$RUNNER_TEMP/output"
+          tar -C "$ANDROID_HOME" \
+            --exclude='arm-linux-androideabi' --exclude='i686-linux-android' --exclude='x86_64-linux-android' \
+            --exclude='riscv64-linux-android' --exclude='simpleperf' \
+            -czf "$RUNNER_TEMP/cbfd-android-toolchain.tar.gz" \
+            ndk/28.0.13004108 platforms/android-35 build-tools/35.0.0 licenses
+          cd "$RUNNER_TEMP"
+          sha256sum cbfd-android-toolchain.tar.gz > output/complete.sha256
+          split -b 250M -d cbfd-android-toolchain.tar.gz output/toolchain.part
+          cd output && sha256sum toolchain.part* > parts.sha256
+          test ! -e toolchain.part03
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbfd-toolchain-part00
+          path: ${{ runner.temp }}/output/toolchain.part00
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbfd-toolchain-part01
+          path: ${{ runner.temp }}/output/toolchain.part01
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbfd-toolchain-part02
+          path: ${{ runner.temp }}/output/toolchain.part02
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbfd-toolchain-checksums
+          path: ${{ runner.temp }}/output/*.sha256
+          retention-days: 1

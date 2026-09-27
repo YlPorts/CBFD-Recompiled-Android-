@@ -1,0 +1,72 @@
+name: Android launcher startup (no game)
+on:
+  workflow_dispatch:
+  push:
+    branches: [android/direct-boot-60fps]
+    paths:
+      - .github/workflows/android-launcher-smoke.yml
+      - android/app/src/main/**
+      - android/tools/launcher_smoke.py
+permissions:
+  contents: read
+jobs:
+  launcher:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+          log-accepted-android-sdk-licenses: false
+      - name: Prepare Java and packaging tools only
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          python3 android/tools/prepare.py --dependencies
+          mkdir -p smoke/{res,generated,classes,dex,results}
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.register_namespace('android','http://schemas.android.com/apk/res/android')
+          t=ET.parse('android/app/src/main/AndroidManifest.xml')
+          t.getroot().set('package','com.ylports.cbfd')
+          # Identical launcher and resources; no game libraries or ROM are needed to open the import UI.
+          t.write('smoke/AndroidManifest.xml',encoding='utf-8',xml_declaration=True)
+          PY
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          JAR="$ANDROID_HOME/platforms/android-35/android.jar"
+          "$BT/aapt2" compile --dir android/app/src/main/res -o smoke/resources.zip
+          "$BT/aapt2" link -I "$JAR" --manifest smoke/AndroidManifest.xml --min-sdk-version 26 --target-sdk-version 35 --version-code 3 --version-name launcher-smoke --java smoke/generated -o smoke/unsigned.apk smoke/resources.zip
+          find android/app/src/main/java android/.deps/SDL/android-project/app/src/main/java smoke/generated -name '*.java' > smoke/sources.txt
+          javac --release 17 -encoding UTF-8 -classpath "$JAR" -d smoke/classes @smoke/sources.txt
+          jar --create --file smoke/classes.jar -C smoke/classes .
+          "$BT/d8" --release --min-api 26 --lib "$JAR" --output smoke/dex smoke/classes.jar
+          (cd smoke/dex && zip -q ../unsigned.apk *.dex)
+          "$BT/zipalign" -f 4 smoke/unsigned.apk smoke/aligned.apk
+          keytool -genkeypair -keystore smoke/test.jks -storepass android -keypass android -alias test -dname 'CN=CI launcher only' -keyalg RSA -validity 30
+          "$BT/apksigner" sign --ks smoke/test.jks --ks-pass pass:android --out smoke/launcher-test.apk smoke/aligned.apk
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Cold launch, document picker and resume on Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: python3 android/tools/launcher_smoke.py smoke/launcher-test.apk smoke/results
+      - name: Upload evidence only, never distribute the launcher-only APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-startup-evidence
+          path: smoke/results/
+          retention-days: 3

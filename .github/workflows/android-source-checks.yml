@@ -1,0 +1,62 @@
+name: Android source checks
+on:
+  push:
+    paths: ['android/**', '.github/workflows/android-source-checks.yml']
+  pull_request:
+    paths: ['android/**', '.github/workflows/android-source-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-snapshot:
+    name: Tracked Android source snapshot (no game inputs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive only Git-tracked Android sources
+        run: |
+          mkdir -p "$RUNNER_TEMP/conker-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/conker-source/android-source.tar.gz" HEAD android .github
+          git rev-parse HEAD > "$RUNNER_TEMP/conker-source/commit.txt"
+          cd "$RUNNER_TEMP/conker-source"
+          sha256sum android-source.tar.gz > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-tracked-source
+          path: ${{ runner.temp }}/conker-source/
+          retention-days: 3
+  importer:
+    name: Synthetic ROM importer tests (not gameplay)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: python3 android/tools/test.py
+      - name: Native storage policy regression (host only, no ROM or GPU)
+        run: python3 android/tools/test_storage.py
+      - name: Mobile render and controls policies (host tests, no ROM)
+        run: python3 android/tools/test_mobile.py
+  java-android:
+    name: Android Java + SDL API compilation (no native build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'platforms;android-35'
+      - run: python3 android/tools/prepare.py --dependencies
+      - name: Compile the actual activity and controls against Android/SDL
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/conker-java"
+          find android/app/src/main/java android/.deps/SDL/android-project/app/src/main/java -name '*.java' > "$RUNNER_TEMP/java-sources.txt"
+          javac -source 17 -target 17 -classpath "$ANDROID_HOME/platforms/android-35/android.jar" -d "$RUNNER_TEMP/conker-java" @"$RUNNER_TEMP/java-sources.txt"

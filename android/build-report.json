@@ -1,0 +1,71 @@
+{
+  "version": "0.1.1-alpha",
+  "application_id": "com.ylports.cbfd",
+  "apk_bytes": 20611691,
+  "apk_sha256": "7029c7576187a5ebec7501df13e028235267b984255d224f781289c2d4dd3780",
+  "libraries": {
+    "lib/arm64-v8a/libmain.so": {
+      "bytes": 17315168,
+      "machine": "AArch64",
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "needed": [
+        "0x0000000000000001 (NEEDED)       Shared library: [libSDL2.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libandroid.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [liblog.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libm.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libc++_shared.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libdl.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libc.so]"
+      ]
+    },
+    "lib/arm64-v8a/libSDL2.so": {
+      "bytes": 1490536,
+      "machine": "AArch64",
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "needed": [
+        "0x0000000000000001 (NEEDED)       Shared library: [libm.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libOpenSLES.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libdl.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [liblog.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libandroid.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libGLESv1_CM.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libGLESv2.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libc++_shared.so]",
+        "0x0000000000000001 (NEEDED)       Shared library: [libc.so]"
+      ]
+    },
+    "lib/arm64-v8a/libc++_shared.so": {
+      "bytes": 1728248,
+      "machine": "AArch64",
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "needed": [
+        "0x0000000000000001 (NEEDED)          Shared library: [libc.so]",
+        "0x0000000000000001 (NEEDED)          Shared library: [libm.so]",
+        "0x0000000000000001 (NEEDED)          Shared library: [libdl.so]"
+      ]
+    }
+  },
+  "tests": {
+    "synthetic_importer": 42,
+    "real_uploaded_zip": "passed, SHA-1 and 67108864-byte size match",
+    "java_android35_sdl23210": "passed",
+    "arm64_native_compile_link": "passed",
+    "apk_signature_v2_v3": "passed",
+    "device_install_or_gameplay": "not tested",
+    "60_fps_measurement": "not tested"
+  },
+  "exported_entrypoints": "SDL_main, nativeInput, nativeRequestQuit, recomp_entrypoint verified"
+}
