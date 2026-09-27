@@ -75,7 +75,7 @@ jobs:
         run: |
           git submodule update --init tools/N64ModernRuntime tools/rt64
           git -C tools/N64ModernRuntime submodule update --init N64Recomp thirdparty/miniz
-          git -C tools/rt64 submodule update --init src/contrib/plume src/contrib/hlslpp src/contrib/xxHash src/contrib/imgui src/contrib/mupen64plus-core
+          git -C tools/rt64 submodule update --init src/contrib/plume src/contrib/hlslpp src/contrib/xxHash src/contrib/imgui src/contrib/mupen64plus-core src/contrib/re-spirv src/contrib/ddspp src/contrib/stb src/contrib/im3d src/contrib/implot src/contrib/zstd
           git -C tools/rt64/src/contrib/plume submodule update --init contrib/Vulkan-Headers
           git -C tools/N64ModernRuntime apply "$GITHUB_WORKSPACE/recomp/n64modernruntime.patch"
           git -C tools/rt64 apply "$GITHUB_WORKSPACE/recomp/rt64.patch"
