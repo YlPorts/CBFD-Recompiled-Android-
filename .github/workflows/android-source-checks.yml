@@ -84,6 +84,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Check Android port scripts
+        run: python3 -m py_compile android/tools/build_apk.py android/tools/patch_dependencies.py android/tools/test_pc_sync.py android/tools/test_mobile.py android/tools/test_vulkan_surface.py
       - name: Verify exact upstream PC 0.1.2 shared files
         run: python3 android/tools/test_pc_sync.py
       - name: Verify Android Vulkan presentation glue
