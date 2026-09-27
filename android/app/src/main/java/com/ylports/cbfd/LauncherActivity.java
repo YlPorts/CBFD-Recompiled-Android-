@@ -64,6 +64,22 @@ public final class LauncherActivity extends Activity {
     private void showLauncher(){
         LinearLayout content=column(20);
 
+        try(InputStream image=getAssets().open("pc/thumbnail.png")){
+            android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeStream(image);
+            if(bitmap!=null){
+                ImageView thumbnail=new ImageView(this);
+                thumbnail.setImageBitmap(bitmap);
+                thumbnail.setAdjustViewBounds(true);
+                thumbnail.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams imageParams=new LinearLayout.LayoutParams(
+                    Math.round(360*getResources().getDisplayMetrics().density),
+                    Math.round(150*getResources().getDisplayMetrics().density));
+                imageParams.setMargins(0,0,0,8);
+                thumbnail.setLayoutParams(imageParams);
+                content.addView(thumbnail);
+            }
+        }catch(IOException ignored){}
+
         TextView title=new TextView(this);
         title.setText("CONKER'S BAD FUR DAY\nRECOMPILED");
         title.setTextSize(29);
