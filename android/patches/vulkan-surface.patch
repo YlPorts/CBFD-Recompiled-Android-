@@ -1,0 +1,332 @@
+--- a/tools/rt64/src/contrib/plume/plume_vulkan.cpp
++++ b/tools/rt64/src/contrib/plume/plume_vulkan.cpp
+@@ -9,6 +9,9 @@
+ #define VOLK_IMPLEMENTATION 
+ 
+ #include "plume_vulkan.h"
++#if defined(__ANDROID__)
++#include "vulkan_surface_policy.hpp"
++#endif
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -2159,6 +2162,40 @@
+             return;
+         }
+ 
++#if defined(__ANDROID__)
++        namespace wsi = conker::android::wsi;
++        std::vector<VkSurfaceFormatKHR> formats;
++        res = wsi::enumerate<VkSurfaceFormatKHR>([&](uint32_t* count, VkSurfaceFormatKHR* data) {
++            return vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, count, data);
++        }, formats);
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "[wsi] Surface format query failed: %s (%d)\n", wsi::result_name(res), int(res));
++            return;
++        }
++        for (const auto& format : formats) {
++            fprintf(stderr, "[wsi] Advertised format=%u colorSpace=%u\n", unsigned(format.format), unsigned(format.colorSpace));
++        }
++        if (!wsi::choose_format(formats.data(), formats.size(), toVk(desc.format), pickedSurfaceFormat)) {
++            fprintf(stderr, "[wsi] No supported UNORM/sRGB surface pair; setup refused safely.\n");
++            return;
++        }
++        this->desc.format = pickedSurfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM
++            ? RenderFormat::R8G8B8A8_UNORM : RenderFormat::B8G8R8A8_UNORM;
++        std::vector<VkPresentModeKHR> modes;
++        res = wsi::enumerate<VkPresentModeKHR>([&](uint32_t* count, VkPresentModeKHR* data) {
++            return vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, count, data);
++        }, modes);
++        if (res != VK_SUCCESS || std::find(modes.begin(), modes.end(), VK_PRESENT_MODE_FIFO_KHR) == modes.end()) {
++            fprintf(stderr, "[wsi] Present mode query failed or FIFO unavailable: %s (%d)\n", wsi::result_name(res), int(res));
++            return;
++        }
++        immediatePresentModeSupported = std::find(modes.begin(), modes.end(), VK_PRESENT_MODE_IMMEDIATE_KHR) != modes.end();
++        mailboxPresentModeSupported = std::find(modes.begin(), modes.end(), VK_PRESENT_MODE_MAILBOX_KHR) != modes.end();
++        setVsyncEnabled(true);
++        surfaceReady = true;
++        fprintf(stderr, "[wsi] Selected format=%u colorSpace=%u (requested=%u)\n",
++            unsigned(pickedSurfaceFormat.format), unsigned(pickedSurfaceFormat.colorSpace), unsigned(toVk(desc.format)));
++#else
+         VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
+         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
+ 
+@@ -2236,6 +2273,8 @@
+             return;
+         }
+ 
++#endif
++
+         // Parent command queue should track this swap chain.
+         commandQueue->swapChains.insert(this);
+     }
+@@ -2254,6 +2293,9 @@
+     }
+ 
+     bool VulkanSwapChain::present(uint32_t textureIndex, RenderCommandSemaphore **waitSemaphores, uint32_t waitSemaphoreCount) {
++#if defined(__ANDROID__)
++        if (vk == VK_NULL_HANDLE || textureIndex >= textures.size()) return false;
++#endif
+         thread_local std::vector<VkSemaphore> waitSemaphoresVector;
+         waitSemaphoresVector.clear();
+         for (uint32_t i = 0; i < waitSemaphoreCount; i++) {
+@@ -2294,13 +2336,22 @@
+ #else
+         if ((res != VK_SUCCESS) && (res != VK_SUBOPTIMAL_KHR)) {
+ #endif
++#if defined(__ANDROID__)
++            fprintf(stderr, "[wsi] vkQueuePresentKHR: %s (%d)\n", conker::android::wsi::result_name(res), int(res));
++#endif
+             return false;
+         }
+-
++#if defined(__ANDROID__)
++        if (presentCount == 1) fprintf(stderr, "[wsi] First frame presented successfully\n");
++        ++presentCount;
++#endif
+         return true;
+     }
+ 
+     void VulkanSwapChain::wait() {
++#if defined(__ANDROID__)
++        if (vk == VK_NULL_HANDLE || vkWaitForPresentKHR == nullptr) return;
++#endif
+         assert(desc.enablePresentWait && "Present wait should've been explicitly enabled during swap chain creation before using the wait function.");
+ 
+         if (currentPresentId >= desc.maxFrameLatency) {
+@@ -2310,6 +2361,98 @@
+     }
+ 
+     bool VulkanSwapChain::resize() {
++#if defined(__ANDROID__)
++        namespace wsi = conker::android::wsi;
++        if (!surfaceReady || surface == VK_NULL_HANDLE) return false;
++        uint32_t windowWidth = 0, windowHeight = 0;
++        getWindowSize(windowWidth, windowHeight);
++        if (!windowWidth || !windowHeight) return false;
++        VkSurfaceCapabilitiesKHR caps{};
++        VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(commandQueue->device->physicalDevice, surface, &caps);
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "[wsi] Surface capabilities failed: %s (%d)\n", wsi::result_name(res), int(res));
++            return false;
++        }
++        wsi::SurfaceSettings settings{};
++        if (!wsi::choose_settings(caps, desc.textureCount, windowWidth, windowHeight, settings)) {
++            fprintf(stderr, "[wsi] No usable surface settings: usage=0x%X alpha=0x%X transforms=0x%X\n",
++                caps.supportedUsageFlags, caps.supportedCompositeAlpha, caps.supportedTransforms);
++            return false;
++        }
++        createInfo = {};
++        createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
++        createInfo.surface = surface;
++        createInfo.minImageCount = settings.imageCount;
++        createInfo.imageFormat = pickedSurfaceFormat.format;
++        createInfo.imageColorSpace = pickedSurfaceFormat.colorSpace;
++        createInfo.imageExtent = settings.extent;
++        createInfo.imageArrayLayers = 1;
++        createInfo.imageUsage = settings.usage;
++        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
++        createInfo.preTransform = settings.transform;
++        createInfo.compositeAlpha = settings.alpha;
++        createInfo.presentMode = requiredPresentMode;
++        createInfo.clipped = VK_TRUE;
++        createInfo.oldSwapchain = vk;
++        fprintf(stderr, "[wsi] Creating swapchain %ux%u format=%u colorSpace=%u images=%u usage=0x%X transform=0x%X alpha=0x%X\n",
++            settings.extent.width, settings.extent.height, unsigned(createInfo.imageFormat),
++            unsigned(createInfo.imageColorSpace), settings.imageCount, settings.usage, settings.transform, settings.alpha);
++        releaseImageViews();
++        textures.clear();
++        const VkSwapchainKHR oldSwapchain = vk;
++        VkSwapchainKHR nextSwapchain = VK_NULL_HANDLE;
++        vk = VK_NULL_HANDLE;
++        width = height = 0;
++        res = vkCreateSwapchainKHR(commandQueue->device->vk, &createInfo, nullptr, &nextSwapchain);
++        // oldSwapchain is retired by this call even when creation fails.
++        if (oldSwapchain != VK_NULL_HANDLE) vkDestroySwapchainKHR(commandQueue->device->vk, oldSwapchain, nullptr);
++        createInfo.oldSwapchain = VK_NULL_HANDLE;
++        if (res != VK_SUCCESS) {
++            fprintf(stderr, "[wsi] vkCreateSwapchainKHR: %s (%d / 0x%X); no image access attempted.\n",
++                wsi::result_name(res), int(res), unsigned(res));
++            return false;
++        }
++        vk = nextSwapchain;
++        std::vector<VkImage> images;
++        res = wsi::enumerate<VkImage>([&](uint32_t* count, VkImage* data) {
++            return vkGetSwapchainImagesKHR(commandQueue->device->vk, vk, count, data);
++        }, images);
++        if (res != VK_SUCCESS || images.size() < settings.imageCount) {
++            fprintf(stderr, "[wsi] Swapchain image query failed: %s (%d)\n", wsi::result_name(res), int(res));
++            releaseSwapChain();
++            return false;
++        }
++        desc.textureCount = uint32_t(images.size());
++        textures.resize(desc.textureCount);
++        for (uint32_t i = 0; i < desc.textureCount; ++i) {
++            textures[i] = VulkanTexture(commandQueue->device, images[i]);
++            textures[i].desc.dimension = RenderTextureDimension::TEXTURE_2D;
++            textures[i].desc.format = desc.format;
++            textures[i].desc.width = settings.extent.width;
++            textures[i].desc.height = settings.extent.height;
++            textures[i].desc.depth = 1;
++            textures[i].desc.mipLevels = 1;
++            textures[i].desc.arraySize = 1;
++            textures[i].desc.flags = RenderTextureFlag::RENDER_TARGET;
++            textures[i].fillSubresourceRange();
++            textures[i].createImageView(pickedSurfaceFormat.format);
++            if (textures[i].imageView == VK_NULL_HANDLE) {
++                fprintf(stderr, "[wsi] Swapchain image view creation failed.\n");
++                releaseImageViews();
++                textures.clear();
++                releaseSwapChain();
++                return false;
++            }
++        }
++        width = settings.extent.width;
++        height = settings.extent.height;
++        pickedAlphaFlag = settings.alpha;
++        createdPresentMode = requiredPresentMode;
++        presentCount = 1;
++        currentPresentId = 0;
++        fprintf(stderr, "[wsi] Swapchain ready: %ux%u, %u real images\n", width, height, desc.textureCount);
++        return true;
++#else
+         getWindowSize(width, height);
+ 
+         // Don't recreate the swap chain at all if the window doesn't have a valid size.
+@@ -2398,6 +2541,7 @@
+         }
+ 
+         return true;
++#endif
+     }
+ 
+     bool VulkanSwapChain::needsResize() const {
+@@ -2431,6 +2575,9 @@
+     }
+ 
+     RenderTexture *VulkanSwapChain::getTexture(uint32_t textureIndex) {
++#if defined(__ANDROID__)
++        if (textureIndex >= textures.size()) return nullptr;
++#endif
+         return &textures[textureIndex];
+     }
+ 
+@@ -2447,6 +2594,9 @@
+     }
+ 
+     uint32_t VulkanSwapChain::getRefreshRate() const {
++#if defined(__ANDROID__)
++        if (vk == VK_NULL_HANDLE || vkGetRefreshCycleDurationGOOGLE == nullptr) return 0;
++#endif
+         VkRefreshCycleDurationGOOGLE refreshCycle = {};
+         VkResult res = vkGetRefreshCycleDurationGOOGLE(commandQueue->device->vk, vk, &refreshCycle);
+         if (res != VK_SUCCESS) {
+@@ -2483,6 +2633,9 @@
+     }
+ 
+     bool VulkanSwapChain::acquireTexture(RenderCommandSemaphore *signalSemaphore, uint32_t *textureIndex) {
++#if defined(__ANDROID__)
++        if (vk == VK_NULL_HANDLE || textures.empty() || !signalSemaphore || !textureIndex) return false;
++#endif
+         assert(signalSemaphore != nullptr);
+ 
+         VulkanCommandSemaphore *interfaceSemaphore = static_cast<VulkanCommandSemaphore *>(signalSemaphore);
+--- a/tools/rt64/src/contrib/plume/plume_vulkan.h
++++ b/tools/rt64/src/contrib/plume/plume_vulkan.h
+@@ -241,6 +241,10 @@
+         uint64_t currentPresentId = 0;
+         bool immediatePresentModeSupported = false;
+         bool mailboxPresentModeSupported = false;
++#if defined(__ANDROID__)
++        bool surfaceReady = false;
++        RenderFormat getFormat() const override { return desc.format; }
++#endif
+ 
+         VulkanSwapChain(VulkanCommandQueue *commandQueue, const RenderSwapChainDesc &desc);
+         ~VulkanSwapChain() override;
+--- a/tools/rt64/src/hle/rt64_application.cpp
++++ b/tools/rt64/src/hle/rt64_application.cpp
+@@ -325,7 +325,11 @@
+         // Create the swap chain with the texture count specified from the configuration.
+         RenderSwapChainDesc swapChainDesc;
+         swapChainDesc.renderWindow = appWindow->windowHandle;
++#if defined(__ANDROID__)
++        swapChainDesc.format = RenderFormat::R8G8B8A8_UNORM;
++#else
+         swapChainDesc.format = RenderFormat::B8G8R8A8_UNORM;
++#endif
+         swapChainDesc.textureCount = (userConfig.displayBuffering == UserConfiguration::DisplayBuffering::Triple) ? 3 : 2;
+ 
+         // Enable present wait if supported by the device. We specify a max latency of 1 as we use it to wait right before the next
+@@ -341,6 +345,13 @@
+         }
+ 
+         swapChain = presentGraphicsWorker->commandQueue->createSwapChain(swapChainDesc);
++#if defined(__ANDROID__)
++        // Verify the actual surface/images before shaders or presentation threads exist.
++        if (!swapChain || !swapChain->resize() || swapChain->isEmpty() || !swapChain->getTexture(0)) {
++            fprintf(stderr, "[wsi] RT64 setup failed: presentation surface was not created.\n");
++            return SetupResult::GraphicsDeviceNotFound;
++        }
++#endif
+ 
+         // Before configuring multisampling, make sure the device actually supports it for the formats we'll use. If it doesn't, turn off antialiasing in the configuration.
+         const RenderSampleCounts colorSampleCounts = device->getSampleCountsSupported(RenderTarget::colorBufferFormat(usesHDR));
+@@ -353,6 +364,10 @@
+         // Create the shader library.
+         const RenderMultisampling multisampling = RasterShader::generateMultisamplingPattern(userConfig.msaaSampleCount(), device->getCapabilities().sampleLocations);
+         shaderLibrary = std::make_unique<ShaderLibrary>(usesHDR, usesHardwareResolve);
++#if defined(__ANDROID__)
++        shaderLibrary->swapChainFormat = swapChain->getFormat();
++        fprintf(stderr, "[wsi] VI pipelines use the actual swapchain format=%u\n", unsigned(shaderLibrary->swapChainFormat));
++#endif
+         shaderLibrary->setupCommonShaders(renderInterface.get(), device.get());
+         shaderLibrary->setupMultisamplingShaders(renderInterface.get(), device.get(), multisampling);
+ 
+--- a/tools/rt64/src/render/rt64_shader_library.h
++++ b/tools/rt64/src/render/rt64_shader_library.h
+@@ -16,6 +16,7 @@
+         SamplerLibrary samplerLibrary;
+         bool usesHDR = false;
+         bool usesHardwareResolve = false;
++        RenderFormat swapChainFormat = RenderFormat::B8G8R8A8_UNORM;
+ 
+         // All shaders.
+         ShaderRecord bicubicScaling;
+--- a/tools/rt64/src/render/rt64_shader_library.cpp
++++ b/tools/rt64/src/render/rt64_shader_library.cpp
+@@ -599,7 +599,7 @@
+             RenderGraphicsPipelineDesc pipelineDesc;
+             pipelineDesc.vertexShader = fullScreenVertexShader.get();
+             pipelineDesc.pixelShader = regularShader.get();
+-            pipelineDesc.renderTargetFormat[0] = RenderFormat::B8G8R8A8_UNORM; // TODO: Use whatever format the swap chain was created with.
++            pipelineDesc.renderTargetFormat[0] = swapChainFormat; // Actual presentation image format, not a desktop-only assumption.
+             pipelineDesc.renderTargetBlend[0] = RenderBlendDesc::Copy();
+             pipelineDesc.renderTargetCount = 1;
+             pipelineDesc.pipelineLayout = videoInterfaceNearest.pipelineLayout.get();
+--- a/tools/rt64/src/hle/rt64_present_queue.cpp
++++ b/tools/rt64/src/hle/rt64_present_queue.cpp
+@@ -502,7 +502,11 @@
+                     }
+                 }
+ 
++#if defined(__ANDROID__)
++                skipPresent = skipPresent || !swapChainValid || ext.swapChain->isEmpty();
++#else
+                 skipPresent = skipPresent || ext.swapChain->isEmpty();
++#endif
+ 
+                 Present &present = presents[processCursor];
+                 ext.workloadQueue->waitForWorkloadId(present.workloadId);
+--- a/tools/rt64/src/contrib/plume/plume_render_interface.h
++++ b/tools/rt64/src/contrib/plume/plume_render_interface.h
+@@ -86,6 +86,9 @@
+     };
+ 
+     struct RenderSwapChain {
++#if defined(__ANDROID__)
++        virtual RenderFormat getFormat() const = 0;
++#endif
+         virtual ~RenderSwapChain() { }
+         virtual bool present(uint32_t textureIndex, RenderCommandSemaphore **waitSemaphores, uint32_t waitSemaphoreCount) = 0;
+         virtual void wait() = 0;

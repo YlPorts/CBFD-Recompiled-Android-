@@ -3,6 +3,7 @@
 No checkout reset, network access, ROM processing or desktop-source deletion.
 """
 from pathlib import Path
+import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 
 def replace(path, before, after, count=1):
@@ -61,7 +62,13 @@ endif()''')
     replace('tools/rt64/src/contrib/plume/plume_render_interface_types.h',
         '#elif defined(__ANDROID__)\n    typedef ANativeWindow* RenderWindow;\n#elif defined(PLUME_SDL_VULKAN_ENABLED)\n    typedef SDL_Window *RenderWindow;',
         '#elif defined(PLUME_SDL_VULKAN_ENABLED)\n    typedef SDL_Window *RenderWindow;\n#elif defined(__ANDROID__)\n    typedef ANativeWindow* RenderWindow;')
-    print('Android CMake adaptations applied; Conker microcode/widescreen patches retained.')
+    patch = ROOT / 'android/patches/vulkan-surface.patch'
+    reverse = subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)],
+                             cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if reverse.returncode != 0:
+        subprocess.run(['git', 'apply', '--check', str(patch)], cwd=ROOT, check=True)
+        subprocess.run(['git', 'apply', str(patch)], cwd=ROOT, check=True)
+    print('Android build and Vulkan surface adaptations applied; Conker patches retained.')
 
 if __name__ == '__main__':
     main()

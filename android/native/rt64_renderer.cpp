@@ -29,11 +29,11 @@ public:
             initialize(rdram, window);
         } catch (const std::exception& error) {
             std::fprintf(stderr, "[renderer] RT64 initialization exception: %s\n", error.what());
-            app.reset();
+            if (app) { app->end(); app.reset(); }
             setup_result = SetupResult::GraphicsDeviceNotFound;
         } catch (...) {
             std::fprintf(stderr, "[renderer] Unknown RT64 initialization exception\n");
-            app.reset();
+            if (app) { app->end(); app.reset(); }
             setup_result = SetupResult::GraphicsDeviceNotFound;
         }
     }
@@ -96,7 +96,7 @@ private:
             case R::GraphicsAPINotFound: setup_result = SetupResult::GraphicsAPINotFound; break;
             default: setup_result = SetupResult::GraphicsDeviceNotFound; break;
         }
-        if (setup_result != SetupResult::Success) { app.reset(); return; }
+        if (setup_result != SetupResult::Success) { app->end(); app.reset(); return; }
         app->setFullScreen(true);
         std::fprintf(stderr, "[renderer] Vulkan ready; fullscreen/Expand; target presentation=60\n");
     }

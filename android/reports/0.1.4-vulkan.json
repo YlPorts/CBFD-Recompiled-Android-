@@ -1,0 +1,53 @@
+{
+  "version": "0.1.4-alpha",
+  "versionCode": 5,
+  "parent_commit": "d416fd9bf44816df0763d73ebd86fc4d6b83288f",
+  "apk_bytes": 20628075,
+  "apk_sha256": "85de325b4ebd16ada5a4daeddb23e0a6a804aa50b54b54a2cbde2336c79d29ef",
+  "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+  "same_signing_certificate_as_0.1.3": true,
+  "native_arm64_release_build": true,
+  "libraries": {
+    "lib/arm64-v8a/libmain.so": {
+      "sha256": "8e30ffb5b5fc45c71be9364fc9e19bae07cd0eecedb705edccdb46db898666e1",
+      "bytes": 17330784,
+      "elf_load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_0.1.3": true
+    },
+    "lib/arm64-v8a/libSDL2.so": {
+      "sha256": "be402dd4f42e25d512896e60311b9e6354200cec93256186827922248a262699",
+      "bytes": 1490536,
+      "elf_load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_0.1.3": true
+    },
+    "lib/arm64-v8a/libc++_shared.so": {
+      "sha256": "836c4dfd05a30d786fd75ff39a3f4730b3fba313d63b0fde895361e8985d7f92",
+      "bytes": 1728248,
+      "elf_load_alignments": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_0.1.3": false
+    }
+  },
+  "checks": {
+    "importer": 42,
+    "storage": 16,
+    "wsi_policy": 40,
+    "actual_swapchain_methods_mocked_platform": 30,
+    "rt64_source_integration": 3
+  },
+  "device_execution_tested": false,
+  "gameplay_tested": false,
+  "fps_measured": false
+}

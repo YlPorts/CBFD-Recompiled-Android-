@@ -17,8 +17,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 ANDROID = ROOT / 'android'
-VERSION = '0.1.3-alpha'
-VERSION_CODE = '4'
+VERSION = '0.1.4-alpha'
+VERSION_CODE = '5'
 
 def run(*args: object) -> None:
     subprocess.run([str(a) for a in args], check=True, cwd=ROOT)
@@ -33,7 +33,7 @@ def main() -> None:
     p.add_argument('--skip-native-build', action='store_true', help='Package already compiled real libraries')
     p.add_argument('--native-apk', type=Path, help='Reuse the real engine from a previously signed ARM64 APK for Java-only fixes')
     p.add_argument('--native-apk-sha256', help='Required SHA-256 of --native-apk; prevents accidentally using the wrong engine')
-    p.add_argument('--output', type=Path, default=ROOT / 'android/out/Conker-Recompiled-0.1.3-alpha-arm64.apk')
+    p.add_argument('--output', type=Path, default=ROOT / 'android/out/Conker-Recompiled-0.1.4-alpha-arm64.apk')
     a = p.parse_args()
     if not a.sdk:
         p.error('Set ANDROID_HOME or --sdk.')

@@ -1,26 +1,27 @@
-# Conker Recompiled Android — 0.1.3-alpha
+# Conker Recompiled Android — 0.1.4-alpha
 
-Port nativo ARM64 con RT64/Vulkan. Esta revisión corrige el cierre por permiso
-denegado al crear `/data/.rt64`, observado después de importar la ROM en Android 16.
-**Compilación y firma comprobadas; esta APK nueva aún no se ha ejecutado en el A15.
+Port nativo ARM64 con RT64/Vulkan. Esta revisión corrige la selección de formato y
+la continuación insegura después de un fallo al crear la superficie de presentación.
+**Compilación y firma comprobadas; la nueva APK aún no se ha ejecutado en el A15.
 No hay medición de 60 FPS ni validación completa de gameplay.**
 
 ## Corrección actual
 
-RT64 ya no detecta una carpeta HOME de escritorio. Recibe `detectDataPath=false`
-y una ruta explícita bajo `getFilesDir()/state/rt64`. Se comprueba la carpeta antes
-de crear los hilos del motor. No se requieren permisos adicionales y no se cambian
-la ROM importada ni los guardados. El diagnóstico distingue construcción de RT64,
-setup Vulkan, primer dibujo y primera actualización VI.
+RT64/Plume seleccionan RGBA8 o BGRA8 UNORM según los pares de formato/espacio de
+color anunciados por la superficie. El formato elegido llega también a los
+pipelines finales de VI. Las dimensiones, usos y demás parámetros respetan las
+capacidades consultadas. Se comprueba el swapchain antes de anunciar éxito y se
+impide usar imágenes inválidas después de un fallo de creación.
 
-Se recompiló y enlazó el motor real ARM64, además de Java/DEX. Pasaron 16 pruebas
-de rutas y 42 del importador. Se comprobaron ABI, SDL/JNI, firma y alineación de
-16 KiB. El certificado coincide con 0.1.2: actualizar sin desinstalar ni borrar datos.
-El informe exacto y sus límites están en [reports/0.1.3-storage.md](reports/0.1.3-storage.md).
+Se recompiló y enlazó el motor real ARM64, además de Java/DEX. Pasaron las pruebas
+locales del importador (42), rutas (16), política Vulkan (40), métodos de Plume con
+SDL/Vulkan simulados (30) y tres comprobaciones de integración de fuentes.
+**Estas pruebas no ejecutan Vulkan en un teléfono ni el juego.**
 
-La corrección anterior de ventana/pantalla completa de 0.1.2 se conserva. Su prueba
-del lanzador Android 16 se documenta en [reports/0.1.2-startup.md](reports/0.1.2-startup.md)
-y no constituye una prueba del motor del juego.
+El certificado coincide con 0.1.3: actualizar sin desinstalar ni borrar datos.
+Informe y límites exactos: [reports/0.1.4-vulkan.md](reports/0.1.4-vulkan.md).
+Se conservan los arreglos de [rutas privadas de 0.1.3](reports/0.1.3-storage.md)
+y de [inicio de ventana de 0.1.2](reports/0.1.2-startup.md).
 
 ## Uso
 
@@ -44,38 +45,34 @@ binutils-mips-linux-gnu y las dependencias Python de la base.
 git submodule update --init --recursive
 ./build.sh --no-game /ruta/a/Conker-USA.z64
 python3 android/tools/prepare.py --dependencies
-python3 android/tools/test.py
-python3 android/tools/test_storage.py
+python3 android/tools/build_apk.py --sdk "$ANDROID_HOME" \
+  --keystore /ruta/privada/conker-android.jks --alias conker-android --jobs 2
 ```
 
-Conservar una clave privada permanente y definir CONKER_KEYSTORE_PASSWORD y
-CONKER_KEY_PASSWORD en el entorno, sin publicarlas:
+Define CONKER_KEYSTORE_PASSWORD y CONKER_KEY_PASSWORD en el entorno. Conserva la
+misma clave privada para las actualizaciones. El script aplica los parches Android
+sobre las dependencias ya parcheadas por build.sh, compila el juego real y firma
+con AAPT2/Javac/D8/zipalign/apksigner. Falla si faltan las fuentes generadas o las
+bibliotecas reales; no produce una APK vacía de sustitución. El proyecto Gradle
+se conserva para desarrollo, pero el script anterior es el flujo verificado.
+
+Para repetir las pruebas locales, después de preparar los parches de dependencias:
 
 ```sh
-python3 android/tools/build_apk.py \
-  --sdk "$ANDROID_HOME" \
-  --keystore /ruta/privada/conker-android.jks \
-  --alias conker-android \
-  --jobs 2
+python3 android/tools/test.py
+python3 android/tools/test_storage.py
+python3 android/tools/test_vulkan_surface.py
 ```
 
-Salida: `android/out/Conker-Recompiled-0.1.3-alpha-arm64.apk`. El constructor aplica
-las adaptaciones Android sobre las revisiones y parches de Conker fijados; no
-sustituye RT64 por una versión antigua. Usa AAPT2/Javac/D8/zipalign/apksigner sin
-descargar plugins Gradle. Falla si faltan las fuentes generadas o las bibliotecas
-reales; nunca entrega un importador vacío como juego.
+Las pruebas Vulkan extraen los métodos de Plume realmente parcheados y simulan
+únicamente las llamadas de plataforma; no contienen un motor de juego alternativo.
 
-`--skip-native-build` solo empaqueta las bibliotecas ya compiladas. `--native-apk`
-con SHA-256 verificado está reservado para correcciones exclusivamente Java: **no
-sirve para esta corrección C++**, pues reutilizaría el motor defectuoso anterior.
+## Privacidad y estado
 
-## Privacidad y alcance de las pruebas
+ROM, fuentes generadas desde ROM, partidas y claves de firma no se publican ni se
+envían a GitHub Actions. La APK exige importar la ROM y no incluye el archivo ROM
+completo. Actions comprueba fuentes/Java o prepara herramientas públicas: un check
+verde no demuestra gameplay. Informes históricos conservados en reports/.
 
-La ROM, fuentes generadas desde ella, claves, APK y partidas no se suben al repositorio
-ni a Actions. El respaldo privado anterior conserva los insumos de recompilación y
-la firma. La APK requiere importar la ROM y no contiene el archivo ROM completo.
-
-Actions comprueba importación, Java y política de rutas en el host; también archiva
-únicamente fuentes Android ya seguidas por Git. Un check verde no mide FPS ni prueba
-Vulkan/gameplay. `build-report.json` conserva la compilación inicial; los informes
-por versión documentan los cambios posteriores. `master` permanece sin modificar.
+Las partidas están en los archivos privados de la app. Desinstalar borra esos datos;
+actualizar con la misma firma e identificador com.ylports.cbfd los conserva.
