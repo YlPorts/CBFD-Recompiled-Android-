@@ -1,11 +1,6 @@
 name: Android ARM64 toolchain
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - android/pc-0.1.2-direct-port
-    paths:
-      - '.github/workflows/android-toolchain.yml'
 permissions:
   contents: read
 jobs:
