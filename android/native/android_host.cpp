@@ -17,17 +17,25 @@
 #include "ultramodern/ultramodern.hpp"
 #include "conker.hpp"
 #include "mobile_profile.hpp"
+#include "renderer_selection.hpp"
+#include "mobile_camera.hpp"
+#include "mobile_diagnostics.hpp"
+#include "surface_lifecycle.hpp"
+#include <android/native_window_jni.h>
 #include "rt64_storage.hpp"
 
 extern "C" void recomp_entrypoint(uint8_t*, recomp_context*);
 RspExitReason conker_audio_ucode(uint8_t*, uint32_t);
 std::unique_ptr<ultramodern::renderer::RendererContext> create_android_renderer(
     uint8_t*, ultramodern::renderer::WindowHandle, bool);
+std::unique_ptr<ultramodern::renderer::RendererContext> create_gles_renderer(
+    uint8_t*, ultramodern::renderer::WindowHandle, bool);
 
 namespace {
 constexpr auto game_id = u8"conker.n64.us.1.0";
 SDL_Window* game_window = nullptr;
 SDL_GameController* controller = nullptr;
+uint64_t next_controller_scan = 0;
 struct Input { uint16_t buttons = 0; float x = 0, y = 0; } touch, gamepad;
 std::mutex input_mutex;
 
@@ -58,32 +66,46 @@ void* create_gfx() {
 ultramodern::renderer::WindowHandle create_window(void*) {
     SDL_DisplayMode mode{};
     if (SDL_GetDesktopDisplayMode(0, &mode) != 0) { mode.w = 1280; mode.h = 720; }
+    if (conker::mobile::use_opengl()) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8); SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8); SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24); SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    }
     game_window = SDL_CreateWindow("Conker Recompiled", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-        mode.w, mode.h, SDL_WINDOW_VULKAN | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALLOW_HIGHDPI);
+        mode.w, mode.h, (conker::mobile::use_opengl() ? SDL_WINDOW_OPENGL : SDL_WINDOW_VULKAN)
+            | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!game_window) throw std::runtime_error(SDL_GetError());
-    std::fprintf(stderr, "[startup] SDL Vulkan window %dx%d\n", mode.w, mode.h);
+    std::fprintf(stderr, "[startup] SDL %s window %dx%d\n", conker::mobile::renderer_name(), mode.w, mode.h);
     return game_window;
 }
-void pump(void*) {
+void pump_events() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_CONTROLLERDEVICEREMOVED) next_controller_scan = 0;
         if (event.type == SDL_QUIT || (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_AC_BACK)) {
             ultramodern::quit();
         }
+        if (event.type == SDL_RENDER_DEVICE_RESET && conker::mobile::use_opengl())
+            throw std::runtime_error("Se perdió el contexto OpenGL. Vuelve a abrir el juego.");
         if (event.type == SDL_APP_WILLENTERBACKGROUND || (event.type == SDL_WINDOWEVENT
             && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)) {
-            std::lock_guard lock(input_mutex); touch = {}; gamepad = {};
+            std::lock_guard lock(input_mutex); touch = {}; gamepad = {}; conker::camera::release();
         }
     }
     if (controller && !SDL_GameControllerGetAttached(controller)) {
         SDL_GameControllerClose(controller); controller = nullptr;
     }
-    if (!controller) {
+    if (!controller && SDL_GetTicks64() >= next_controller_scan) {
+        next_controller_scan = SDL_GetTicks64() + 2000;
         for (int i = 0; i < SDL_NumJoysticks(); ++i) {
             if (SDL_IsGameController(i)) { controller = SDL_GameControllerOpen(i); break; }
         }
     }
     Input next{};
+    conker::camera::padInput.store(0,std::memory_order_relaxed);
     if (controller) {
         auto key = [&](SDL_GameControllerButton button, uint16_t bit) {
             if (SDL_GameControllerGetButton(controller, button)) next.buttons |= bit;
@@ -96,13 +118,25 @@ void pump(void*) {
         if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 12000) next.buttons |= 0x2000;
         const int cx = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX);
         const int cy = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY);
-        if (cx < -14000) next.buttons |= 2; if (cx > 14000) next.buttons |= 1;
-        if (cy < -14000) next.buttons |= 8; if (cy > 14000) next.buttons |= 4;
+        float ax=cx/32767.f,ay=-cy/32767.f;
+        const float radius=std::hypot(ax,ay);
+        if(radius>.18f) {
+            const float factor=std::min(1.f,(radius-.18f)/.82f)/radius;
+            conker::camera::padInput.store(conker::camera::pack(ax*factor,ay*factor),std::memory_order_relaxed);
+        }
         next.x = std::clamp(SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f, -1.f, 1.f);
         next.y = std::clamp(-SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f, -1.f, 1.f);
         if (std::hypot(next.x, next.y) < .12f) next.x = next.y = 0;
     }
-    std::lock_guard lock(input_mutex); gamepad = next;
+    { std::lock_guard lock(input_mutex); gamepad = next; }
+}
+void pump(void*) {
+    // SDL saves/restores the CURRENT GL context during Android pause/resume.
+    // For GLES, the graphics thread pumps events while it owns that context.
+    if (!conker::mobile::use_opengl()) pump_events();
+    // librecomp already sleeps 1 ms. Avoid polling Java/SDL/gamepad devices at
+    // ~1000 Hz. Touch snapshots go straight through JNI, not through this wait.
+    SDL_Delay(3);
 }
 void poll_input() {}
 bool get_input(int port, uint16_t* buttons, float* x, float* y) {
@@ -116,18 +150,42 @@ bool get_input(int port, uint16_t* buttons, float* x, float* y) {
 void rumble(int, bool) {}
 }
 
+void conker_pump_gles_events() { pump_events(); }
+
 ultramodern::input::connected_device_info_t conker::get_connected_device_info(int port) {
     using namespace ultramodern::input;
     return port == 0 ? connected_device_info_t{Device::Controller, Pak::None}
                      : connected_device_info_t{Device::None, Pak::None};
+}
+extern "C" JNIEXPORT void JNICALL Java_com_ylports_cbfd_GameActivity_nativeSurface(
+    JNIEnv* env, jclass, jobject surface, jint width, jint height) {
+    ANativeWindow* window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
+    conker::android::surfaceRegistry.publish(window, uint32_t(std::max(0,int(width))), uint32_t(std::max(0,int(height))));
+    conker::android::surfaceRetryAfter.store(0);
+}
+extern "C" JNIEXPORT void JNICALL Java_com_ylports_cbfd_GameActivity_nativeForeground(
+    JNIEnv*, jclass, jboolean active) {
+    conker::android::surfaceRegistry.setForeground(active);
+    if (active) conker::android::surfaceRetryAfter.store(0);
 }
 extern "C" JNIEXPORT void JNICALL Java_com_ylports_cbfd_GameActivity_nativeInput(
     JNIEnv*, jclass, jint buttons, jfloat x, jfloat y) {
     std::lock_guard lock(input_mutex);
     touch = {static_cast<uint16_t>(buttons), std::clamp(x, -1.f, 1.f), std::clamp(y, -1.f, 1.f)};
 }
+extern "C" JNIEXPORT void JNICALL Java_com_ylports_cbfd_GameActivity_nativeCamera(JNIEnv*, jclass, jfloat x, jfloat y) {
+    conker::camera::touchInput.store(conker::camera::pack(x,y),std::memory_order_relaxed);
+}
 extern "C" JNIEXPORT void JNICALL Java_com_ylports_cbfd_GameActivity_nativeRequestQuit(JNIEnv*, jclass) {
     ultramodern::quit();
+}
+extern "C" JNIEXPORT jstring JNICALL Java_com_ylports_cbfd_GameActivity_nativeCaptureDiagnostics(JNIEnv* env, jclass) {
+    try {
+        const std::string snapshot = conker::mobile::diagnostics.request();
+        return env->NewStringUTF(snapshot.c_str());
+    } catch (const std::exception&) {
+        return env->NewStringUTF("[render-capture] unavailable; failed to allocate capture\n");
+    }
 }
 
 extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** argv) {
@@ -137,6 +195,9 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
             const std::string arg(argv[i]);
             if (arg == "--rom" && i + 1 < argc) rom = argv[++i];
             else if (arg == "--data" && i + 1 < argc) state = argv[++i];
+            else if (arg == "--renderer" && i + 1 < argc) {
+                if (!conker::mobile::select_renderer(argv[++i])) throw std::runtime_error("Motor gráfico desconocido.");
+            }
             else throw std::runtime_error("Argumento de arranque no válido.");
         }
         if (rom.empty() || state.empty()) throw std::runtime_error("Falta la ROM o la carpeta privada de guardado.");
@@ -146,16 +207,19 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         setvbuf(stderr, nullptr, _IOLBF, 0);
         dup2(fileno(stderr), STDOUT_FILENO);
         setvbuf(stdout, nullptr, _IOLBF, 0);
-        std::ofstream(state / "running.marker") << "Conker Android 0.1.4-alpha\n";
-        std::fprintf(stderr, "[startup] Conker Android 0.1.4-alpha ARM64; target=60; aspect=Expand; internal=2x\n");
+        std::ofstream(state / "running.marker") << "Conker Android 0.1.15-alpha\n";
+        std::fprintf(stderr, "[startup] Conker Android 0.1.15-alpha ARM64; build=mali-blend-015; renderer=%s; displayTarget=60; aspect=Expand; internalHeight=1080; noDRS\n", conker::mobile::renderer_name());
         // Validate storage on SDL_main before spawning RT64's graphics thread.
         // This uses --data from Android getFilesDir(), never HOME or /data.
         const auto renderer_path = conker::android::rt64_data_path(state);
         std::fprintf(stderr, "[startup] RT64 private storage ready: %s\n", renderer_path.c_str());
         recomp::register_config_path(state);
-        ultramodern::renderer::set_graphics_config(mobile_profile());
+        auto graphics = mobile_profile();
+        if (conker::mobile::use_opengl()) graphics.api_option = ultramodern::renderer::GraphicsApi::OpenGL;
+        ultramodern::renderer::set_graphics_config(graphics);
         recomp::GameEntry game{};
-        game.rom_hash = 0x23FBBA2DBCF2FD8EULL;
+        game.rom_hash = conker::roms::us_rom_hash;
+        game.accept_rom = conker::roms::accept;
         game.internal_name = "CONKER BFD";
         game.display_name = "Conker's Bad Fur Day";
         game.game_id = game_id;
@@ -174,16 +238,16 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         conker::register_mod_exports();
         std::fprintf(stderr, "[startup] Validating imported ROM\n");
         if (recomp::select_rom(rom, game_id) != recomp::RomValidationError::Good) {
-            throw std::runtime_error("ROM incompatible: usa Conker's Bad Fur Day USA sin modificar.");
+            throw std::runtime_error("ROM incompatible: necesita el código original USA; los cambios de recursos son compatibles.");
         }
         char program[] = "conker-android", flag[] = "--game", name[] = "conker";
         char* args[] = {program, flag, name, nullptr};
         recomp::Configuration cfg{};
         cfg.argc = 3; cfg.argv = args;
-        cfg.project_version = recomp::Version{0, 1, 4};
+        cfg.project_version = recomp::Version{0, 1, 15};
         cfg.rsp_callbacks.get_rsp_microcode = rsp;
         cfg.audio_callbacks = {conker::audio::queue_samples, conker::audio::get_frames_remaining, conker::audio::set_frequency};
-        cfg.renderer_callbacks.create_render_context = create_android_renderer;
+        cfg.renderer_callbacks.create_render_context = conker::mobile::use_opengl() ? create_gles_renderer : create_android_renderer;
         cfg.gfx_callbacks = {create_gfx, create_window, pump};
         cfg.input_callbacks = {poll_input, get_input, rumble, conker::get_connected_device_info};
         cfg.error_handling_callbacks = {error_box};

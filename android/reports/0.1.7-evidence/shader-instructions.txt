@@ -1,0 +1,2 @@
+OpMatrixTimesMatrix baseline=1 new=0
+DXC outputs compiled successfully. This is instruction inspection, not a GPU-time benchmark.

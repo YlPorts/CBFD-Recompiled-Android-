@@ -21,6 +21,52 @@ index 716d48b..fed5660 100644
  
  if (WIN32)
      add_compile_definitions(NOMINMAX)
+diff --git a/librecomp/include/librecomp/game.hpp b/librecomp/include/librecomp/game.hpp
+index a4cf7e8..8bb9ad2 100644
+--- a/librecomp/include/librecomp/game.hpp
++++ b/librecomp/include/librecomp/game.hpp
+@@ -38,6 +38,10 @@ namespace recomp {
+ 
+         void (*on_init_callback)(uint8_t* rdram, recomp_context* context) = nullptr;
+ 
++        // Optional: decides whether a ROM (big-endian) is this game's, in place of comparing
++        // its hash with rom_hash. Lets a game accept ROM hacks that leave its code alone.
++        bool (*accept_rom)(std::span<const uint8_t> rom) = nullptr;
++
+         std::u8string stored_filename() const;
+     };
+     struct Version {
+diff --git a/librecomp/src/mods.cpp b/librecomp/src/mods.cpp
+index 0f7de83..42c9057 100644
+--- a/librecomp/src/mods.cpp
++++ b/librecomp/src/mods.cpp
+@@ -149,9 +149,11 @@ private:
+ 
+ void unprotect(void* target_func, uint64_t* old_flags) {
+     DWORD old_flags_dword;
++    // Keep the page executable while it's patched: other threads may be running code on the same page (an
++    // incrementally linked executable's jump thunks share pages), and without execute access they crash.
+     BOOL result = VirtualProtect(target_func,
+         16,
+-        PAGE_READWRITE,
++        PAGE_EXECUTE_READWRITE,
+         &old_flags_dword);
+     *old_flags = old_flags_dword;
+     (void)result;
+@@ -233,7 +235,13 @@ void unprotect(void* target_func, uint64_t* old_flags) {
+     int page_size = getpagesize();
+     page_start = (page_start / page_size) * page_size;
+ 
++#if defined(__APPLE__)
++    // Apple Silicon doesn't allow pages both writable and executable.
+     int result = mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE);
++#else
++    // Keep the page executable while it's patched: other threads may be running code on it.
++    int result = mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC);
++#endif
+     *old_flags = 0;
+     (void)result;
+ }
 diff --git a/librecomp/src/pi.cpp b/librecomp/src/pi.cpp
 index 43509ba..39b4a99 100644
 --- a/librecomp/src/pi.cpp
@@ -91,6 +137,52 @@ index 43509ba..39b4a99 100644
  
      ctx->r2 = 0;
  }
+diff --git a/librecomp/src/recomp.cpp b/librecomp/src/recomp.cpp
+index 850689d..6516856 100644
+--- a/librecomp/src/recomp.cpp
++++ b/librecomp/src/recomp.cpp
+@@ -166,6 +166,14 @@ bool check_hash(const std::vector<uint8_t>& rom_data, uint64_t expected_hash) {
+     return calculated_hash == expected_hash;
+ }
+ 
++// Whether a ROM is the game's: its accept_rom if it has one, otherwise its hash.
++static bool rom_matches(const std::vector<uint8_t>& rom_data, const recomp::GameEntry& game_entry) {
++    if (game_entry.accept_rom != nullptr) {
++        return game_entry.accept_rom(rom_data);
++    }
++    return check_hash(rom_data, game_entry.rom_hash);
++}
++
+ static std::vector<uint8_t> read_file(const std::filesystem::path& path) {
+     std::vector<uint8_t> ret;
+ 
+@@ -197,7 +205,7 @@ bool write_file(const std::filesystem::path& path, const std::vector<uint8_t>& d
+ bool check_stored_rom(const recomp::GameEntry& game_entry) {
+     std::vector stored_rom_data = read_file(config_path / game_entry.stored_filename());
+ 
+-    if (!check_hash(stored_rom_data, game_entry.rom_hash)) {
++    if (!rom_matches(stored_rom_data, game_entry)) {
+         // Incorrect hash, remove the stored ROM file if it exists.
+         std::filesystem::remove(config_path / game_entry.stored_filename());
+         return false;
+@@ -229,7 +237,7 @@ bool recomp::load_stored_rom(const std::u8string& game_id) {
+     
+     std::vector<uint8_t> stored_rom_data = read_file(config_path / find_it->second.stored_filename());
+ 
+-    if (!check_hash(stored_rom_data, find_it->second.rom_hash)) {
++    if (!rom_matches(stored_rom_data, find_it->second)) {
+         // The ROM no longer has the right hash, delete it.
+         std::filesystem::remove(config_path / find_it->second.stored_filename());
+         return false;
+@@ -390,7 +398,7 @@ recomp::RomValidationError recomp::select_rom(const std::filesystem::path& rom_p
+             break;
+     }
+ 
+-    if (!check_hash(rom_data, game_entry.rom_hash)) {
++    if (!rom_matches(rom_data, game_entry)) {
+         const std::string_view name{ reinterpret_cast<const char*>(rom_data.data()) + 0x20, game_entry.internal_name.size()};
+         if (name == game_entry.internal_name) {
+             return recomp::RomValidationError::IncorrectVersion;
 diff --git a/ultramodern/CMakeLists.txt b/ultramodern/CMakeLists.txt
 index 5593172..70d4706 100644
 --- a/ultramodern/CMakeLists.txt

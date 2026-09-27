@@ -1,0 +1,80 @@
+{
+  "version": "0.1.7-alpha",
+  "version_code": 8,
+  "build_id": "native-quality-orbit-017",
+  "application_id": "com.ylports.cbfd",
+  "apk_name": "Conker-Recompiled-0.1.7-alpha-arm64.apk",
+  "apk_size": 20660843,
+  "apk_sha256": "37a14f8948b450bee903f6f55efe7a8c99a497a7dc2070c6d5025d940997e83a",
+  "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+  "same_certificate_as_016": true,
+  "zipalign_16KiB": true,
+  "native_libraries": {
+    "libmain.so": {
+      "size": 17360544,
+      "sha256": "5da2232819120b03dbdd1fc0e635ac8d638b221cde5137de3dc47e8cbcd96489",
+      "pt_load_align": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    "libSDL2.so": {
+      "size": 1490536,
+      "sha256": "be402dd4f42e25d512896e60311b9e6354200cec93256186827922248a262699",
+      "pt_load_align": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    "libc++_shared.so": {
+      "size": 1728248,
+      "sha256": "836c4dfd05a30d786fd75ff39a3f4730b3fba313d63b0fde895361e8985d7f92",
+      "pt_load_align": [
+        16384,
+        16384,
+        16384,
+        16384
+      ]
+    }
+  },
+  "tested_modify_shader_embedded_byte_for_byte": true,
+  "modify_shader_sha256": "8d57f0d15074406ac5da5370dc613b691fb84d224cd28016d9dc0f6954d25ad3",
+  "java_no_fixed_buffer_reduction": true,
+  "tests": {
+    "touch_assertions": 184,
+    "render_metrics_assertions": 34,
+    "matching_clip_assertions": 35976,
+    "screen_edit_clear_matrix_orbit_assertions": 29609,
+    "actual_original_camera_routine_checks": 52,
+    "actual_rt64_matcher_math_checks": 6001,
+    "importer_cases": 42,
+    "private_path_cases": 16,
+    "surface_policy_assertions": 40,
+    "mocked_plume_method_checks": 30,
+    "rt64_source_integration_assertions": 3,
+    "actual_vulkan_shader_components": 1024,
+    "actual_vulkan_shader_new_mismatches": 0,
+    "actual_vulkan_shader_old_mismatches": 256,
+    "vulkan_device": "SwiftShader Device (Subzero), Vulkan 1.3.0",
+    "real_game_cpu_probe": {
+      "seconds_requested": 65,
+      "vi_updates": 3898,
+      "display_lists": 1947,
+      "camera_hooks": 324,
+      "camera_updates": 323,
+      "exit_code": 0,
+      "renderer": "null",
+      "audio": "null"
+    }
+  },
+  "limits": [
+    "No installation or execution of this APK on the SM-A155M in this revision.",
+    "No phone gameplay/FPS/thermal/audio/save/collision benchmark.",
+    "Water/intro tail/pink right border require visual re-test on the phone.",
+    "GPU shader regression used real software Vulkan and synthetic vertices, not a rendered Conker level.",
+    "Headless game camera probe executed ROM-recompiled code but no video output or GPU rendering.",
+    "Lost-surface background/resume recovery not changed by this revision."
+  ]
+}

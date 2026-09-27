@@ -1,0 +1,41 @@
+Initializing recomp heap at offset 0x01000000 with size 0x1F000000
+[camera] Normal-camera hook reached: addr=8014FA30 flags=0000000E actor=80144BEC allowed=1
+[camera] Native orbital yaw/pitch applied to game camera; original collision/view update follows
+[null renderer] display list #1: data_ptr=0x8010AE70 size=0xC38
+[null renderer] display list #2: data_ptr=0x80113800 size=0xC48
+[null renderer] display list #3: data_ptr=0x8010AE70 size=0xC48
+[null renderer] display list #60: data_ptr=0x80113800 size=0xCE8
+[null renderer] display list #120: data_ptr=0x80113800 size=0x6520
+[null renderer] display list #180: data_ptr=0x80113800 size=0x6510
+[null renderer] display list #240: data_ptr=0x80113800 size=0xB28
+[null renderer] display list #300: data_ptr=0x80113800 size=0x7E0
+[null renderer] display list #360: data_ptr=0x80122C30 size=0x16E8
+[null renderer] display list #420: data_ptr=0x80122C30 size=0x1628
+[null renderer] display list #480: data_ptr=0x80122C30 size=0x2178
+[null renderer] display list #540: data_ptr=0x80122C30 size=0x2C28
+[null renderer] display list #600: data_ptr=0x80122C30 size=0x2198
+[null renderer] display list #660: data_ptr=0x80122C30 size=0x20D8
+[null renderer] display list #720: data_ptr=0x80122C30 size=0x1430
+[null renderer] display list #780: data_ptr=0x80122C30 size=0x1340
+[null renderer] display list #840: data_ptr=0x80122C30 size=0x12A0
+[null renderer] display list #900: data_ptr=0x80122C30 size=0x1980
+[null renderer] display list #960: data_ptr=0x80122C30 size=0x19A8
+[null renderer] display list #1020: data_ptr=0x80122C30 size=0x1918
+[null renderer] display list #1080: data_ptr=0x80122C30 size=0x1A88
+[null renderer] display list #1140: data_ptr=0x80122C30 size=0x1B70
+[null renderer] display list #1200: data_ptr=0x80122070 size=0x37F8
+[null renderer] display list #1260: data_ptr=0x80122070 size=0x1E08
+[null renderer] display list #1320: data_ptr=0x80122070 size=0x1928
+[null renderer] display list #1380: data_ptr=0x8011B490 size=0x308
+[null renderer] display list #1440: data_ptr=0x8011B490 size=0x850
+[null renderer] display list #1500: data_ptr=0x8011B490 size=0x840
+[null renderer] display list #1560: data_ptr=0x8011B490 size=0x850
+[null renderer] display list #1620: data_ptr=0x8011B490 size=0x850
+[null renderer] display list #1680: data_ptr=0x8011B490 size=0x840
+[null renderer] display list #1740: data_ptr=0x8011B490 size=0x850
+[null renderer] display list #1800: data_ptr=0x8011B490 size=0x308
+[null renderer] display list #1860: data_ptr=0x8011B490 size=0x840
+[null renderer] display list #1920: data_ptr=0x8011B490 size=0x850
+[host] 65 seconds elapsed, 3898 VIs; quitting
+[null renderer] shutdown after 1947 display lists, 3898 screen updates
+[camera-probe] hooks=324 allowed=324 updated=323 blocked=0

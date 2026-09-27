@@ -1,0 +1,179 @@
+# Builds ready-to-play Windows, Linux and macOS packages. Players still supply their own
+# ROM: they pick it in the launcher the first time. The packages contain no ROM and no
+# assets.
+#
+# Building needs the ROM (the game's code is recompiled from it), so the workflow reads it
+# from a private repository, the way BanjoRecomp's does. Setup, once:
+#   1. Make a private repository holding only baserom.us.z64 (the US ROM) at its root.
+#   2. Make a fine-grained personal access token with read-only "Contents" access to that
+#      repository alone.
+#   3. In this repository's Settings > Secrets and variables > Actions, add the secrets
+#      ROM_REPO (owner/name of the private repository) and ROM_REPO_TOKEN (the token).
+#
+# A pushed tag like v0.2.0 builds the packages into a draft release, which is published
+# once all of them have built. Run by hand from the Actions tab, it makes a draft "Test build"
+# release instead (drafts are only visible to the repository's collaborators). It has no
+# pull request trigger, so the ROM token is never exposed to code from forks.
+#
+# It uses no third-party actions (the repository only allows its owner's): git and the
+# GitHub CLI, both installed on GitHub's runners.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GIT_TERMINAL_PROMPT: '0'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Create the draft release
+        id: tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag=$GITHUB_REF_NAME
+            title="Conker's Bad Fur Day: Recompiled $tag"
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$title" --notes "Building..."
+          else
+            tag=test-build-$GITHUB_RUN_NUMBER
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+              --title "Test build $GITHUB_RUN_NUMBER" --notes "Test build of $GITHUB_SHA (not published)."
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        shell: bash
+        run: |
+          git clone -q --no-checkout "https://github.com/$GITHUB_REPOSITORY" .
+          git checkout -q "$GITHUB_SHA"
+
+      - name: Get the ROM
+        shell: bash
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: git clone -q --depth 1 "https://x-access-token:$ROM_REPO_TOKEN@github.com/$ROM_REPO.git" rom-src
+
+      - name: Build
+        shell: cmd
+        run: build.cmd rom-src\baserom.us.z64
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "package\ConkerRecompiled"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $build = "host\build-win"
+          Copy-Item "$build\ConkerRecomp.exe", "$build\SDL2.dll", "$build\dxcompiler.dll", "$build\dxil.dll" $out
+          Copy-Item -Recurse "$build\assets" "$out\assets"
+          Copy-Item .github\release\README.txt, LICENSE $out
+          Compress-Archive -Path "$out\*" -DestinationPath "package\ConkerRecompiled-${{ needs.prepare.outputs.tag }}-Windows.zip"
+
+      - name: Upload to the release
+        shell: bash
+        run: gh release upload "${{ needs.prepare.outputs.tag }}" package/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+
+  linux:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        run: |
+          git clone -q --no-checkout "https://github.com/$GITHUB_REPOSITORY" .
+          git checkout -q "$GITHUB_SHA"
+
+      - name: Get the ROM
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: git clone -q --depth 1 "https://x-access-token:$ROM_REPO_TOKEN@github.com/$ROM_REPO.git" rom-src
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 cmake ninja-build clang pkg-config libsdl2-dev libgtk-3-dev libfreetype-dev
+
+      - name: Build
+        run: ./build.sh rom-src/baserom.us.z64 < /dev/null
+
+      - name: Package
+        run: |
+          out=package/ConkerRecompiled
+          mkdir -p "$out"
+          cp host/build/ConkerRecomp "$out/"
+          strip "$out/ConkerRecomp"
+          cp -r host/build/assets "$out/assets"
+          cp .github/release/README.txt LICENSE "$out/"
+          tar -czf "package/ConkerRecompiled-${{ needs.prepare.outputs.tag }}-Linux.tar.gz" -C package ConkerRecompiled
+
+      - name: Upload to the release
+        run: gh release upload "${{ needs.prepare.outputs.tag }}" package/*.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
+
+  macos:
+    needs: prepare
+    # Apple Silicon. macOS 15 rather than the newest, as the app (and the Homebrew
+    # libraries bundled in it) can't run on a macOS older than the one it's built on.
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        run: |
+          git clone -q --no-checkout "https://github.com/$GITHUB_REPOSITORY" .
+          git checkout -q "$GITHUB_SHA"
+
+      - name: Get the ROM
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: git clone -q --depth 1 "https://x-access-token:$ROM_REPO_TOKEN@github.com/$ROM_REPO.git" rom-src
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja pkg-config sdl2 freetype dylibbundler
+          # Xcode 26 and later download the Metal compiler separately.
+          xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
+
+      - name: Build
+        run: ./build.sh rom-src/baserom.us.z64 < /dev/null
+
+      - name: Package
+        run: |
+          out=package/ConkerRecompiled
+          mkdir -p "$out"
+          sh host/package_macos.sh "$out"
+          cp .github/release/README.txt LICENSE "$out/"
+          # Plain files only (no ._ extended-attribute entries); the signature is in the app itself.
+          ditto -c -k --norsrc --noextattr --noacl --keepParent "$out" "package/ConkerRecompiled-${{ needs.prepare.outputs.tag }}-macOS.zip"
+
+      - name: Upload to the release
+        run: gh release upload "${{ needs.prepare.outputs.tag }}" package/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish:
+    needs: [prepare, windows, linux, macos]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        run: |
+          git clone -q --depth 1 --branch "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY" src
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --notes-file src/.github/release/notes.md

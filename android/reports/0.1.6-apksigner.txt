@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=YlPorts Conker Android, OU=Android Ports, O=YlPorts, C=PA
+Signer #1 certificate SHA-256 digest: fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe
+Signer #1 certificate SHA-1 digest: 633fa91e91460a3fb05301fc3a22f7c3f1704379
+Signer #1 certificate MD5 digest: 58d85b13b3d42209748ae8999bf34bbe
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+Signer #1 public key SHA-256 digest: 4be82cacaa34fe23d5e37677704120bbe06a1e4a106f253479b19469f9c758ad
+Signer #1 public key SHA-1 digest: 8bc2dd4c4acca5236dc2997d764f183ff3d30149
+Signer #1 public key MD5 digest: e47837e0a7322f41a51d24d0aa95f5cf

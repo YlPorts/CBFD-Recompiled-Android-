@@ -10,9 +10,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 set(GENERATED "${ROOT}/RecompiledFuncs")
 if(NOT EXISTS "${GENERATED}/inputs.sha256")
-    message(FATAL_ERROR "Falta el juego recompilado. Genera RecompiledFuncs con tu ROM USA usando recomp/run.sh. No hay target de APK vacía.")
+    message(FATAL_ERROR "Falta el juego recompilado. Genera RecompiledFuncs con tu ROM USA usando recomp/recompile.py. No hay target de APK vacía.")
 endif()
-set(RECOMP_INPUTS conker.toml recomp/prepare_elf.py recomp/n64recomp.patch recomp/emit_tlb_pages.py recomp/audio_ucode.toml)
+set(RECOMP_INPUTS conker.toml recomp/conker.us.syms.toml recomp/code_rewrites.txt recomp/n64recomp.patch recomp/unpack_rom.py recomp/emit_tlb_pages.py recomp/audio_ucode.toml)
 file(READ "${GENERATED}/inputs.sha256" ACTUAL)
 set(EXPECTED "")
 foreach(input IN LISTS RECOMP_INPUTS)
@@ -22,12 +22,13 @@ foreach(input IN LISTS RECOMP_INPUTS)
     string(APPEND EXPECTED "${HASH} ${input}\n")
 endforeach()
 if(NOT ACTUAL STREQUAL EXPECTED)
-    message(FATAL_ERROR "RecompiledFuncs está desactualizado; vuelve a ejecutar recomp/run.sh.")
+    message(FATAL_ERROR "RecompiledFuncs está desactualizado; vuelve a ejecutar recomp/recompile.py.")
 endif()
 set(SDL_SHARED ON CACHE BOOL "" FORCE)
 set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/.deps/SDL" "${CMAKE_CURRENT_BINARY_DIR}/SDL")
+add_subdirectory(native/gles "${CMAKE_CURRENT_BINARY_DIR}/gles")
 add_subdirectory("${ROOT}/tools/N64ModernRuntime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
 # Apply android/tools/patch_dependencies.py before configuring this target.
 # It adapts the pinned RT64/Plume build without removing Conker microcode fixes.
@@ -42,19 +43,45 @@ add_library(nfd STATIC native/nfd_android.cpp)
 target_include_directories(nfd PUBLIC "${RT64_DIR}/src/contrib/nativefiledialog-extended/src/include")
 set(CONKER_HOST_FILE_TO_C "${CMAKE_CURRENT_SOURCE_DIR}/.host/file_to_c" CACHE FILEPATH "Host shader conversion tool")
 add_subdirectory("${RT64_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/rt64")
+target_include_directories(rt64 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native")
 target_include_directories(plume PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native")
 file(GLOB FUNCS CONFIGURE_DEPENDS "${GENERATED}/funcs_*.c")
 if(NOT FUNCS)
     message(FATAL_ERROR "No hay funciones recompiladas de Conker.")
 endif()
-add_library(ConkerGame STATIC ${FUNCS} "${GENERATED}/tlb_pages.c")
+# Replace only the verified function definition in a PRIVATE build-directory copy.
+# Calls and overlay table entries still resolve the original names to native hooks.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(HOOK_SOURCES)
+foreach(HOOK_SYMBOL func_15123508 func_1501B22C)
+    execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/game_sources.py" "${GENERATED}" "${HOOK_SYMBOL}"
+        OUTPUT_VARIABLE HOOK_SOURCE OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE HOOK_RESULT)
+    if(NOT HOOK_RESULT EQUAL 0)
+        message(FATAL_ERROR "No se pudo localizar la función original ${HOOK_SYMBOL}.")
+    endif()
+    list(APPEND HOOK_SOURCES "${HOOK_SOURCE}")
+endforeach()
+list(REMOVE_DUPLICATES HOOK_SOURCES)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${GENERATED}/inputs.sha256")
+set(HOOK_COPIES)
+foreach(HOOK_SOURCE IN LISTS HOOK_SOURCES)
+    get_filename_component(HOOK_NAME "${HOOK_SOURCE}" NAME)
+    set(HOOK_COPY "${CMAKE_CURRENT_BINARY_DIR}/generated/hook_${HOOK_NAME}")
+    add_custom_command(OUTPUT "${HOOK_COPY}"
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/prepare_camera_hook.py" "${HOOK_SOURCE}" "${HOOK_COPY}"
+        DEPENDS "${HOOK_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/prepare_camera_hook.py" VERBATIM)
+    list(REMOVE_ITEM FUNCS "${HOOK_SOURCE}")
+    list(APPEND HOOK_COPIES "${HOOK_COPY}")
+endforeach()
+add_library(ConkerGame STATIC ${FUNCS} ${HOOK_COPIES} "${GENERATED}/tlb_pages.c")
 target_include_directories(ConkerGame PRIVATE "${GENERATED}" "${ROOT}/tools/N64ModernRuntime/N64Recomp/include")
 target_compile_options(ConkerGame PRIVATE -include setjmp.h -fno-strict-aliasing
     -Wno-implicit-function-declaration -Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable)
-add_library(main SHARED native/android_host.cpp native/rt64_renderer.cpp
+add_library(main SHARED native/android_host.cpp native/rt64_renderer.cpp native/gles_renderer.cpp native/mobile_camera.cpp native/mobile_frustum.cpp
     native/audio_output.cpp "${ROOT}/host/src/overlays.cpp"
     "${ROOT}/host/src/ultra_extras.cpp" "${ROOT}/host/src/mod_api.cpp"
-    "${ROOT}/host/src/widescreen.cpp" "${GENERATED}/rsp/audio_ucode.cpp")
+    "${ROOT}/host/src/widescreen.cpp" "${ROOT}/host/src/interpolation.cpp"
+    "${ROOT}/host/src/rom_versions.cpp" "${GENERATED}/rsp/audio_ucode.cpp")
 target_compile_definitions(main PRIVATE CONKER_RT64)
 target_compile_options(main PRIVATE -fno-strict-aliasing -fms-extensions)
 target_include_directories(main PRIVATE "${ROOT}/host/src" "${GENERATED}"
@@ -62,5 +89,5 @@ target_include_directories(main PRIVATE "${ROOT}/host/src" "${GENERATED}"
     "${RT64_DIR}/src" "${RT64_DIR}/src/contrib" "${RT64_DIR}/src/contrib/plume"
     "${RT64_DIR}/src/contrib/imgui" "${RT64_DIR}/src/contrib/hlslpp/include"
     "${RT64_DIR}/src/contrib/mupen64plus-core/src/api")
-target_link_libraries(main PRIVATE ConkerGame librecomp ultramodern rt64 SDL2::SDL2 android log)
-target_link_options(main PRIVATE "-Wl,-z,max-page-size=16384")
+target_link_libraries(main PRIVATE ConkerGame librecomp ultramodern rt64 conker_gles_core SDL2::SDL2 android log)
+target_link_options(main PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--threads=1")

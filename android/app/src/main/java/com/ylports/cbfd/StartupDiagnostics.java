@@ -11,7 +11,7 @@ import java.util.List;
 
 /** App-private crash evidence only. No network, analytics or storage permission. */
 final class StartupDiagnostics {
-    static final String VERSION = "0.1.4-alpha";
+    static final String VERSION = "0.1.14-alpha";
     private static Context app;
 
     static void install(Context context) {
@@ -88,6 +88,7 @@ final class StartupDiagnostics {
     static void beginLaunch() {
         acknowledge();
         write("java-game.pending", "Android " + VERSION + " / " + System.currentTimeMillis() + "\n");
+        preserveGameplay();
         // Keep the previous log instead of mistaking an old clean shutdown for the new session.
         File current = file("last-run.log"), previous = file("previous-run.log");
         if (current.exists()) {
@@ -104,12 +105,19 @@ final class StartupDiagnostics {
         } else log("Game activity ended without a confirmed clean runtime shutdown");
     }
     static String report() {
+        preserveGameplay();
         StringBuilder out = new StringBuilder("Conker Android " + VERSION + "\n");
         out.append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
             .append(" / Android ").append(Build.VERSION.RELEASE).append(" API ").append(Build.VERSION.SDK_INT)
             .append("\nABI: ").append(java.util.Arrays.toString(Build.SUPPORTED_ABIS)).append('\n');
-        for (String name : new String[]{"startup-error.txt", "startup-java.log", "last-run.log", "rt64/rt64.log", "previous-run.log"}) {
-            if (file(name).isFile()) out.append("\n--- ").append(name).append(" ---\n").append(tail(file(name), 24000));
+        if (Build.VERSION.SDK_INT >= 29) {
+            android.os.PowerManager power = (android.os.PowerManager) app.getSystemService(Context.POWER_SERVICE);
+            if (power != null) out.append("Android thermal status: ").append(power.getCurrentThermalStatus())
+                .append(" (0=normal; 1-6=increasing throttling)\n");
+        }
+        for (String name : new String[]{"startup-error.txt", "render-capture.log", "render-capture.previous.log", "last-gameplay.log", "last-run.log", "previous-run.log", "startup-java.log", "rt64/rt64.log"}) {
+            if (file(name).isFile()) out.append("\n--- ").append(name).append(" ---\n").append(tail(file(name),
+                name.startsWith("render-capture") || name.equals("last-gameplay.log") ? DiagnosticFiles.LIMIT + 1024 : 24000));
         }
         if (Build.VERSION.SDK_INT >= 30) {
             try {
@@ -126,13 +134,17 @@ final class StartupDiagnostics {
         return out.toString();
     }
     private static String tail(File f, int limit) {
-        try (RandomAccessFile in = new RandomAccessFile(f, "r")) {
-            long length = in.length();
-            in.seek(Math.max(0, length - limit));
-            byte[] bytes = new byte[(int) Math.min(length, limit)];
-            in.readFully(bytes);
-            return new String(bytes, StandardCharsets.UTF_8);
-        } catch (IOException | RuntimeException e) { return "Sin registro: " + e.getMessage() + "\n"; }
+        return DiagnosticFiles.tail(f, limit);
+    }
+    private static synchronized void preserveGameplay() {
+        try { DiagnosticFiles.preserveGameplay(file("last-run.log").getParentFile()); }
+        catch (IOException | RuntimeException ignored) {}
+    }
+    static synchronized void capture(String text) {
+        try {
+            DiagnosticFiles.capture(file("last-run.log").getParentFile(), "Conker Android " + VERSION
+                + "; captured=" + System.currentTimeMillis() + "\n" + text);
+        } catch (IOException | RuntimeException error) { log("Could not retain render capture: " + error); }
     }
     private StartupDiagnostics() {}
 }

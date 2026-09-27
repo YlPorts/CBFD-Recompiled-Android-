@@ -1,0 +1,72 @@
+{
+  "version": "0.1.13-alpha",
+  "build": "texture-capture-013",
+  "version_code": 14,
+  "package": "com.ylports.cbfd",
+  "source_parent": "bb40bd1b9e16f57e6f541c0173b7fa54e8400d7c",
+  "apk": {
+    "filename": "Conker-Recompiled-0.1.13-alpha-arm64.apk",
+    "sha256": "38d7823fb1b5cbbe5e1a164f8a94858b98ae2acec92434123a8960e7117ccea5",
+    "size_bytes": 24773227,
+    "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+    "signature_v2": true,
+    "signature_v3": true,
+    "libraries": [
+      {
+        "name": "lib/arm64-v8a/libmain.so",
+        "elf_class": 64,
+        "machine": 183,
+        "segment_alignments": [
+          16384,
+          16384,
+          16384
+        ],
+        "zip_alignment": 16384
+      },
+      {
+        "name": "lib/arm64-v8a/libSDL2.so",
+        "elf_class": 64,
+        "machine": 183,
+        "segment_alignments": [
+          16384,
+          16384,
+          16384
+        ],
+        "zip_alignment": 16384
+      },
+      {
+        "name": "lib/arm64-v8a/libc++_shared.so",
+        "elf_class": 64,
+        "machine": 183,
+        "segment_alignments": [
+          16384,
+          16384,
+          16384,
+          16384
+        ],
+        "zip_alignment": 16384
+      }
+    ],
+    "current_dynamic_and_specialized_spirv_embedded": true
+  },
+  "checks": {
+    "java_and_native_capture_regressions": "passed",
+    "spirv_three_point_fetches": {
+      "PC": 4,
+      "Android": 3
+    },
+    "vulkan_cases": 1632,
+    "vulkan_pixel_checks": 2101248,
+    "vulkan_discrepancies_outside_tolerance": 0,
+    "vulkan_driver": "Mesa lavapipe software",
+    "shader_include_dependencies": "verified in real ARM64 Ninja graph",
+    "patch_reapplication": "passed"
+  },
+  "phone_validation": {
+    "device": "Samsung SM-A155M / Mali-G57 MC2",
+    "tested_this_apk_on_phone": false,
+    "water_fixed": null,
+    "fps_at_1080": null,
+    "note": "User confirmed water defect and FPS drops on 0.1.12; surviving short-session logs have no performance samples. 0.1.13 retains measured gameplay and two requested draw-state snapshots."
+  }
+}

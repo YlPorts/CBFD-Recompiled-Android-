@@ -1,0 +1,23 @@
+Conker Recompiled Android 0.1.14-alpha
+
+This APK uses the native Conker recompilation (MIT), N64ModernRuntime (GPLv3),
+RT64 (MIT), SDL 2.32.10 (zlib license) and the separate GLideN64 graphics library
+(GPLv2). The original copyright and license texts are included in this folder.
+All original source notices remain in the source dependencies.
+
+Modified Android host and renderer integration, build instructions, dependency
+pins and patches are available with this release's public source:
+https://github.com/YlPorts/CBFD-Recompiled-Android-/tree/android/0.1.9-pc-v0.1.1
+
+GLideN64 upstream (renderer only, no Mupen CPU):
+https://github.com/gonetz/GLideN64/tree/41c7ba273a6c9afb43c0574cf3cf5d139182d070
+Modified files: DisplayWindow.cpp, GBI.cpp, GraphicsDrawer.cpp and
+Graphics/OpenGLContext/opengl_GLInfo.cpp. Exact changes are in
+android/patches/gliden64-014.patch. Reproduce them with
+python3 android/tools/prepare_gles.py; source and build integration are in
+android/native/gles. Optional external texture filtering and desktop OSD are
+disabled; the actual GBI, RDP, combiner, texture and framebuffer code is used.
+
+The source repository pins all other dependencies as Git submodules and stores
+their desktop patches under recomp/ and Android patches under android/tools/.
+The APK does not include a ROM. Game recompilation requires a user's own ROM.

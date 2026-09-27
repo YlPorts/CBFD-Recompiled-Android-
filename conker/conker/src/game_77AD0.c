@@ -510,6 +510,22 @@ void func_1504C9E4(struct127 *arg0, s8 arg1, u8 arg2) {
 #pragma GLOBAL_ASM("asm/nonmatchings/game_77AD0/func_150511E8.s")
 #pragma GLOBAL_ASM("asm/nonmatchings/game_77AD0/func_15051558.s")
 #pragma GLOBAL_ASM("asm/nonmatchings/game_77AD0/func_1505210C.s")
+// NON-MATCHING: 3 instructions. The three `add.s` have their operands swapped
+// (target: add old, step; ours: add step, old). IDO produces the same order whichever
+// way round the source writes the addition, with a field read or a local for the old
+// value; `+=` forms and a temporary for the step are further off.
+// Moves the object (arg0) towards the target position stored in the linked object at
+// 0x31C (s16 x/y/z at 0x6C/0x6E/0x70; y lowered by 80), by the fraction D_8009933C in
+// modes 1 and 3 of the byte at 0x6B, else all the way. 0x14/0x18/0x1C look like the
+// position and 0x1CC the previous y (a guess from use).
+// void func_15052260(void *arg0) {
+//     ... (m2c output, as the pragma's assembly)
+//     *(f32 *)(arg0 + 0x14) = old_x + (((f32) target->x) - old_x) * fraction;
+//     *(f32 *)(arg0 + 0x18) = old_y + (((f32) (target->y - 80)) - old_y) * fraction;
+//     *(f32 *)(arg0 + 0x1C) = old_z + (((f32) target->z) - old_z) * fraction;
+//     func_1505E650(arg0, 0x14, 1.0f, 6.0f, 0.0f, 0.0f, 0);
+//     ...
+// }
 #pragma GLOBAL_ASM("asm/nonmatchings/game_77AD0/func_15052260.s")
 
 void func_15052408(struct127 *arg0) {

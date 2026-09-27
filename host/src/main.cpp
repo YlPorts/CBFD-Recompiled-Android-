@@ -37,10 +37,13 @@
 // The game's RDRAM, for reporting fault addresses as N64 addresses.
 static uint8_t* crash_rdram = nullptr;
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
 #include <csignal>
 #include <execinfo.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 // Debugging aid: report where a crash happened (the recompiled functions are
 // named after their vram, so the backtrace maps straight back to game code).
@@ -211,7 +214,6 @@ RspExitReason conker_audio_ucode(uint8_t* rdram, uint32_t ucode_addr);
 
 namespace {
     const std::u8string game_id = u8"conker.n64.us.1.0";
-    constexpr uint64_t rom_hash = 0x23FBBA2DBCF2FD8EULL; // XXH3-64 of the US ROM (big-endian .z64)
 
     std::atomic<uint32_t> vi_count{0};
 
@@ -310,24 +312,38 @@ namespace {
         if (!error) {
             return exe.parent_path();
         }
+#elif defined(__APPLE__)
+        char buffer[4096];
+        uint32_t size = sizeof(buffer);
+        if (_NSGetExecutablePath(buffer, &size) == 0) {
+            std::error_code error;
+            std::filesystem::path exe = std::filesystem::canonical(buffer, error);
+            if (!error) {
+                return exe.parent_path();
+            }
+        }
 #endif
         return std::filesystem::absolute(argv0).parent_path();
     }
+}
 
-    const char* rom_error_text(recomp::RomValidationError error) {
-        switch (error) {
-            case recomp::RomValidationError::FailedToOpen:
-                return "The file couldn't be opened.";
-            case recomp::RomValidationError::NotARom:
-                return "The file isn't an N64 ROM.";
-            case recomp::RomValidationError::IncorrectRom:
-            case recomp::RomValidationError::IncorrectVersion:
-                return "This isn't the US version of Conker's Bad Fur Day, the only one supported.";
-            default:
-                return "The ROM couldn't be loaded.";
-        }
+const char* conker::rom_error_text(recomp::RomValidationError error) {
+    switch (error) {
+        case recomp::RomValidationError::FailedToOpen:
+            return "The file couldn't be opened.";
+        case recomp::RomValidationError::NotARom:
+            return "The file isn't an N64 ROM.";
+        case recomp::RomValidationError::IncorrectRom:
+            return "This isn't the US version of Conker's Bad Fur Day, the only one supported.";
+        case recomp::RomValidationError::IncorrectVersion:
+            return "This is Conker's Bad Fur Day, but not the US version, or a ROM hack that changes the "
+                "game's code (hacks that only change its assets, such as its audio or textures, work).";
+        default:
+            return "The ROM couldn't be loaded.";
     }
+}
 
+namespace {
     std::string path_text(const std::filesystem::path& path) {
         std::u8string text = path.u8string();
         return std::string(text.begin(), text.end());
@@ -340,7 +356,7 @@ namespace {
         if (!rom_path.empty()) {
             recomp::RomValidationError result = recomp::select_rom(rom_path, game_id);
             if (result != recomp::RomValidationError::Good) {
-                std::fprintf(stderr, "[host] %s: %s\n", path_text(rom_path).c_str(), rom_error_text(result));
+                std::fprintf(stderr, "[host] %s: %s\n", path_text(rom_path).c_str(), conker::rom_error_text(result));
                 return false;
             }
             return true;
@@ -400,7 +416,7 @@ int main(int argc, char** argv) {
     std::filesystem::path old_data_dir = exe_directory(argv[0]) / "conker_data";
 #if defined(CONKER_RT64)
     if (!headless) {
-        NFD_Init();
+        // NFD_Init() is called once SDL is up (frontend.cpp's create_gfx).
         // recompui loads assets/ (and looks for portable.txt) relative to the working
         // directory: make that the executable's folder, wherever the game is started from.
         std::filesystem::current_path(exe_directory(argv[0]));
@@ -418,7 +434,9 @@ int main(int argc, char** argv) {
     bool start_directly = headless || seconds > 0;
 
     recomp::GameEntry game{};
-    game.rom_hash = rom_hash;
+    game.rom_hash = conker::roms::us_rom_hash;
+    // The US ROM, or a ROM hack that only changes the game's assets.
+    game.accept_rom = conker::roms::accept;
     game.internal_name = "CONKER BFD";
     game.display_name = "Conker's Bad Fur Day";
     game.game_id = game_id;
@@ -459,7 +477,7 @@ int main(int argc, char** argv) {
     recomp::Configuration cfg{};
     cfg.argc = (int)runtime_argv.size();
     cfg.argv = runtime_argv.data();
-    cfg.project_version = recomp::Version{ 0, 1, 0 };
+    cfg.project_version = recomp::Version{ 0, 1, 1 };
     cfg.rsp_callbacks.get_rsp_microcode = get_rsp_microcode;
     cfg.audio_callbacks = { queue_samples, get_frames_remaining, set_frequency };
     cfg.renderer_callbacks.create_render_context = conker::create_null_renderer;

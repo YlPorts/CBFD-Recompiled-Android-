@@ -14,7 +14,7 @@ public final class RomImporter {
     private RomImporter() {}
 
     public static File importRom(InputStream input, File directory) throws IOException {
-        return importContainerValidated(input, directory, ROM_SIZE, ROM_SHA1);
+        return importContainerValidated(input, directory, ROM_SIZE, null);
     }
 
     // Package-private so synthetic tests need no copyrighted game data.
@@ -58,7 +58,7 @@ public final class RomImporter {
                 zip.closeEntry();
             }
             if (prepared == null) throw new IOException("El ZIP no contiene una ROM .z64, .v64 o .n64.");
-            return commit(prepared, directory);
+            return hash == null ? RomVersions.commit(prepared, directory) : commit(prepared, directory);
         } finally {
             if (prepared != null) Files.deleteIfExists(prepared);
         }
@@ -66,7 +66,7 @@ public final class RomImporter {
 
     static File importValidated(InputStream input, File directory, long size, String expectedHash) throws IOException {
         Path prepared = prepare(input, directory, size, expectedHash);
-        try { return commit(prepared, directory); }
+        try { return expectedHash == null ? RomVersions.commit(prepared, directory) : commit(prepared, directory); }
         finally { Files.deleteIfExists(prepared); }
     }
 
@@ -92,9 +92,10 @@ public final class RomImporter {
                 output.flush();
                 file.getFD().sync();
             }
-            if (count != size || !hex(digest.digest()).equals(expectedHash)) {
+            if (count != size || (expectedHash != null && !hex(digest.digest()).equals(expectedHash))) {
                 throw new IOException("ROM no compatible. Necesitas Conker's Bad Fur Day USA sin modificar.");
             }
+            if (expectedHash == null) RomVersions.validate(temporary.toFile());
             valid = true;
             return temporary;
         } finally {

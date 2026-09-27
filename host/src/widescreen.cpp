@@ -95,15 +95,17 @@ extern "C" void conker_emit_sprite_texrect(uint8_t* rdram, recomp_context* ctx) 
 // func_151D5E90 (and func_151D6418) draw a saved copy of the frame, such as the
 // pause menu's blurred background, as 42 textured tiles. The copy only holds the
 // 4:3 frame, so RT64 draws the tiles in the 4:3 area and the widened sides show
-// the game frozen behind them. Stretch the tiles over the whole width instead,
-// with RT64's rect aspect. The tiles are full of load and pipe syncs, which RT64
-// doesn't need: before the first rectangle, the first sync becomes the enable of
-// RT64's extended GBI and the second the stretch; the last sync, after the last
-// rectangle, returns to the automatic aspect. The display list doesn't grow.
+// the game frozen behind them. Scale the tiles up to the whole width instead,
+// and as much vertically, so the frame keeps its proportions and loses some of
+// its top and bottom, with RT64's rect aspect (zoom, from rt64.patch). The tiles
+// are full of load and pipe syncs, which RT64 doesn't need: before the first
+// rectangle, the first sync becomes the enable of RT64's extended GBI and the
+// second the zoom; the last sync, after the last rectangle, returns to the
+// automatic aspect. The display list doesn't grow.
 namespace {
     constexpr uint32_t g_ex_setrectaspect_v1 = 0x000033;
     constexpr uint32_t g_ex_aspect_auto = 0x0;
-    constexpr uint32_t g_ex_aspect_stretch = 0x1;
+    constexpr uint32_t g_ex_aspect_zoom = 0x3;
     constexpr uint32_t g_texrect = 0xE4;
 
     gpr frame_copy_dl_start = 0;
@@ -149,7 +151,7 @@ extern "C" void conker_frame_copy_end(uint8_t* rdram, recomp_context* ctx) {
     gpr dl = syncs_before[0];
     put_command(rdram, dl, (rt64_hook_opcode << 24) | rt64_hook_magic, (rt64_hook_op_enable << 28) | rt64_extended_opcode);
     dl = syncs_before[1];
-    put_command(rdram, dl, (rt64_extended_opcode << 24) | g_ex_setrectaspect_v1, g_ex_aspect_stretch);
+    put_command(rdram, dl, (rt64_extended_opcode << 24) | g_ex_setrectaspect_v1, g_ex_aspect_zoom);
     dl = last_sync;
     put_command(rdram, dl, (rt64_extended_opcode << 24) | g_ex_setrectaspect_v1, g_ex_aspect_auto);
 }

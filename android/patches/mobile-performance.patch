@@ -1,0 +1,218 @@
+diff --git a/tools/rt64/src/common/rt64_thread.cpp b/tools/rt64/src/common/rt64_thread.cpp
+--- a/tools/rt64/src/common/rt64_thread.cpp
++++ b/tools/rt64/src/common/rt64_thread.cpp
+@@ -6,6 +6,10 @@
+ 
+ #include <cassert>
+ #include <thread>
++#ifdef __ANDROID__
++#include <sys/resource.h>
++#include <unistd.h>
++#endif
+ 
+ #if defined(_WIN64)
+ #   include <Windows.h>
+@@ -55,6 +59,13 @@
+     void Thread::setCurrentThreadPriority(Priority priority) {
+ #   if defined(_WIN32)
+         SetThreadPriority(GetCurrentThread(), toWindowsPriority(priority));
++#   elif defined(__ANDROID__)
++        // Android/Linux nice is per native thread when the TID is specified.
++        // Only lower background priority: no root, negative nice or RT scheduler.
++        if (priority == Priority::Idle || priority == Priority::Lowest || priority == Priority::Low) {
++            const int niceness = priority == Priority::Idle ? 10 : 5;
++            (void)setpriority(PRIO_PROCESS, static_cast<id_t>(gettid()), niceness);
++        }
+ #   elif defined(__linux__) || defined(__APPLE__)
+         // On Linux, thread priorities can't be changed under the default scheduler policy (SCHED_OTHER) and the other policies
+         // that are available without root privileges are lower priority. Instead you can set the thread's "nice" value, which ranges
+diff --git a/tools/rt64/src/common/rt64_timer.cpp b/tools/rt64/src/common/rt64_timer.cpp
+--- a/tools/rt64/src/common/rt64_timer.cpp
++++ b/tools/rt64/src/common/rt64_timer.cpp
+@@ -6,6 +6,9 @@
+ #include <thread>
+ 
+ #include "rt64_timer.h"
++#ifdef __ANDROID__
++#include "mobile_render_safety.hpp"
++#endif
+ 
+ namespace RT64 {
+     // Timer
+@@ -22,6 +25,13 @@
+     }
+ 
+     void Timer::preciseSleepUntil(const Timestamp endTime) {
++#ifdef __ANDROID__
++        // Sleep the coarse part once instead of waking every 100 us for a whole
++        // display interval. Preserve the upstream calibrated precision tail.
++        const auto coarseRemaining = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - current()).count();
++        const auto coarseSleep = conker::mobile::bulk_sleep_ns(coarseRemaining);
++        if (coarseSleep > 0) std::this_thread::sleep_for(std::chrono::nanoseconds(coarseSleep));
++#endif
+         auto startTime = std::chrono::high_resolution_clock::now();
+         int64_t remainingNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
+         if (remainingNanoseconds < 0) {
+diff --git a/tools/rt64/src/hle/rt64_application.cpp b/tools/rt64/src/hle/rt64_application.cpp
+--- a/tools/rt64/src/hle/rt64_application.cpp
++++ b/tools/rt64/src/hle/rt64_application.cpp
+@@ -374,8 +374,16 @@
+         // Create the shader caches.
+         // Estimate the amount of shader compiler threads by trying to use about half of the system's available threads.
+         // We need the ubershader pipelines done as soon as possible, so we use a different thread count that demands more of the system.
++#ifdef __ANDROID__
++        // Leave CPU time for the game, audio, Java input and the render queues on
++        // big.LITTLE phones. Shader variants/output are unchanged.
++        const uint32_t rasterShaderThreads = std::min(std::max(threadsAvailable / 2U, 1U), 2U);
++        const uint32_t ubershaderThreads = std::min(std::max(threadsAvailable, 1U), 2U);
++        std::fprintf(stderr, "[mobile] shader workers=%u; initial pipeline workers=%u\n", rasterShaderThreads, ubershaderThreads);
++#else
+         const uint32_t rasterShaderThreads = std::max(threadsAvailable / 2U, 1U);
+         const uint32_t ubershaderThreads = uint32_t(std::max(int(threadsAvailable) - 2, 1));
++#endif
+         rasterShaderCache = std::make_unique<RasterShaderCache>(rasterShaderThreads, ubershaderThreads);
+         rasterShaderCache->setup(device.get(), renderInterface->getCapabilities().shaderFormat, shaderLibrary.get(), multisampling);
+ 
+@@ -386,7 +394,11 @@
+ #   endif
+ 
+         // Create the texture cache.
++#ifdef __ANDROID__
++        const uint32_t textureCacheThreads = 1;
++#else
+         const uint32_t textureCacheThreads = std::max(threadsAvailable / 4U, 1U);
++#endif
+         textureCache = std::make_unique<TextureCache>(textureDirectWorker.get(), textureCopyWorker.get(), textureCacheThreads, shaderLibrary.get());
+ 
+         // Compute the approximate pool for texture replacements from the dedicated video memory.
+diff --git a/tools/rt64/src/hle/rt64_present_queue.cpp b/tools/rt64/src/hle/rt64_present_queue.cpp
+--- a/tools/rt64/src/hle/rt64_present_queue.cpp
++++ b/tools/rt64/src/hle/rt64_present_queue.cpp
+@@ -3,6 +3,9 @@
+ //
+ 
+ #include "rt64_present_queue.h"
++#ifdef __ANDROID__
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include "common/rt64_thread.h"
+ #include "rhi/rt64_render_hooks.h"
+@@ -402,6 +405,9 @@
+                 RenderCommandSemaphore *waitSemaphore = drawSemaphores[swapChainIndex].get();
+                 presentTimestamp = Timer::current();
+                 swapChainValid = ext.swapChain->present(swapChainIndex, &waitSemaphore, 1);
++#ifdef __ANDROID__
++                if (swapChainValid) conker::mobile::metrics.presents.fetch_add(1, std::memory_order_relaxed);
++#endif
+                 presentProfiler.logAndRestart();
+             }
+         }
+diff --git a/tools/rt64/src/hle/rt64_rsp.cpp b/tools/rt64/src/hle/rt64_rsp.cpp
+--- a/tools/rt64/src/hle/rt64_rsp.cpp
++++ b/tools/rt64/src/hle/rt64_rsp.cpp
+@@ -3,6 +3,10 @@
+ //
+ 
+ #include "rt64_rsp.h"
++#ifdef __ANDROID__
++#include "mobile_render_safety.hpp"
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include <algorithm>
+ #include <cassert>
+@@ -1284,9 +1288,23 @@
+             maxMatrix = std::max(maxMatrix, worldIndices[globalIndex]);
+         }
+ 
++        bool conservativeBounds = false;
++#ifdef __ANDROID__
++        // Do not use post-divide winding/bounds for a triangle crossing w=0.
++        // This changes framebuffer extent tracking, NOT the GPU's face/depth culling.
++        for (int i = 0; i < 3; ++i) {
++            const auto index = globalIndices[i];
++            const auto &screen = posScreen[index];
++            conservativeBounds |= conker::mobile::unsafe_screen_bounds(
++                screen[0], screen[1], workload.drawData.posTransformed[index][3]);
++        }
++        if (conservativeBounds) {
++            conker::mobile::metrics.boundsFallbacks.fetch_add(1, std::memory_order_relaxed);
++        }
++#endif
+         bool visibleTri = true;
+         const bool usesCulling = geometryMode & cullBothMask;
+-        if (usesCulling) {
++        if (usesCulling && !conservativeBounds) {
+             const hlslpp::float3 U = posScreen[globalIndices[1]] - posScreen[globalIndices[0]];
+             const hlslpp::float3 V = posScreen[globalIndices[2]] - posScreen[globalIndices[0]];
+             const hlslpp::float3 N = hlslpp::cross(V, U);
+@@ -1298,12 +1316,17 @@
+             fbPair.scissorRect.merge(scissorRect);
+ 
+             FixedRect drawRect;
+-            for (int i = 0; i < 3; i++) {
+-                const hlslpp::float3 &v = posScreen[globalIndices[i]];
+-                drawRect.ulx = std::min(drawRect.ulx, int32_t(v[0] * 4.0f));
+-                drawRect.uly = std::min(drawRect.uly, int32_t(v[1] * 4.0f));
+-                drawRect.lrx = std::max(drawRect.lrx, int32_t(hlslpp::ceil(v.x).x * 4.0f));
+-                drawRect.lry = std::max(drawRect.lry, int32_t(hlslpp::ceil(v.y).x * 4.0f));
++            if (conservativeBounds) {
++                drawRect = scissorRect;
++            }
++            else {
++                for (int i = 0; i < 3; i++) {
++                    const hlslpp::float3 &v = posScreen[globalIndices[i]];
++                    drawRect.ulx = std::min(drawRect.ulx, int32_t(v[0] * 4.0f));
++                    drawRect.uly = std::min(drawRect.uly, int32_t(v[1] * 4.0f));
++                    drawRect.lrx = std::max(drawRect.lrx, int32_t(hlslpp::ceil(v.x).x * 4.0f));
++                    drawRect.lry = std::max(drawRect.lry, int32_t(hlslpp::ceil(v.y).x * 4.0f));
++                }
+             }
+ 
+             const interop::RSPViewport &viewport = viewportStack[viewportStackSize - 1];
+diff --git a/tools/rt64/src/hle/rt64_workload_queue.cpp b/tools/rt64/src/hle/rt64_workload_queue.cpp
+--- a/tools/rt64/src/hle/rt64_workload_queue.cpp
++++ b/tools/rt64/src/hle/rt64_workload_queue.cpp
+@@ -3,6 +3,9 @@
+ //
+ 
+ #include "rt64_workload_queue.h"
++#ifdef __ANDROID__
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include "common/rt64_thread.h"
+ 
+@@ -848,6 +851,11 @@
+             queryPool->queryResults();
+             const uint64_t *frameTimestamps = queryPool->getResults();
+             rendererGPUProfiler.log(double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
++#ifdef __ANDROID__
++            if (frameTimestamps[1] >= frameTimestamps[0]) {
++                conker::mobile::gpu_sample(double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
++            }
++#endif
+ 
+             // Indicate to the texture cache it's safe to delete the textures if no locks are active.
+             ext.textureCache->decrementLock();
+@@ -859,6 +867,9 @@
+ 
+         framebufferRenderer->advanceFrame(workloadConfig.raytracingEnabled);
+         rendererCPUProfiler.end();
++#ifdef __ANDROID__
++        conker::mobile::render_sample(rendererCPUProfiler.accumulation);
++#endif
+         rendererCPUProfiler.log();
+         rendererCPUProfiler.reset();
+ #   endif
+@@ -983,6 +994,9 @@
+                     matchingProfiler.start();
+                     curFrame.match(ext.workloadGraphicsWorker, *this, prevFrame, ext.workloadVelocityUploader, velocityUploaderUsed, tileInterpolationUsed, lookAtInterpolationUsed);
+                     matchingProfiler.end();
++#ifdef __ANDROID__
++                    conker::mobile::match_sample(matchingProfiler.accumulation);
++#endif
+                     matchingProfiler.log();
+ 
+                     const bool displayRateAboveOriginal = (workload.viOriginalRate > 0) && (workloadConfig.targetRate > workload.viOriginalRate);

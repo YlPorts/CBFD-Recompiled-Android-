@@ -1,13 +1,20 @@
 name: Android source checks
 on:
   push:
-    paths: ['android/**', '.github/workflows/android-source-checks.yml']
+    paths: ['android/**', 'host/src/**', 'recomp/**', 'conker.toml', '.github/workflows/android-source-checks.yml']
   pull_request:
-    paths: ['android/**', '.github/workflows/android-source-checks.yml']
+    paths: ['android/**', 'host/src/**', 'recomp/**', 'conker.toml', '.github/workflows/android-source-checks.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  gles-renderer:
+    name: OpenGL ES 3 pixels (synthetic lists, no ROM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libegl1-mesa-dev libgl1-mesa-dri
+      - run: python3 android/tools/test_gles_014.py
   source-snapshot:
     name: Tracked Android source snapshot (no game inputs)
     runs-on: ubuntu-latest
@@ -58,3 +65,47 @@ jobs:
           mkdir -p "$RUNNER_TEMP/conker-java"
           find android/app/src/main/java android/.deps/SDL/android-project/app/src/main/java -name '*.java' > "$RUNNER_TEMP/java-sources.txt"
           javac -source 17 -target 17 -classpath "$ANDROID_HOME/platforms/android-35/android.jar" -d "$RUNNER_TEMP/conker-java" @"$RUNNER_TEMP/java-sources.txt"
+
+  pc-native-regressions:
+    name: PC sync and Android native regressions (no ROM/GPU)
+    runs-on: ubuntu-latest
+    env:
+      CXX: g++
+      CC: gcc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned runtime and rendering headers
+        run: |
+          git submodule update --init tools/N64ModernRuntime tools/rt64
+          git -C tools/N64ModernRuntime submodule update --init N64Recomp
+          git -C tools/rt64 submodule update --init src/contrib/plume src/contrib/hlslpp src/contrib/xxHash
+          git -C tools/rt64/src/contrib/plume submodule update --init contrib/Vulkan-Headers
+          git -C tools/N64ModernRuntime apply "$GITHUB_WORKSPACE/recomp/n64modernruntime.patch"
+          git -C tools/rt64 apply "$GITHUB_WORKSPACE/recomp/rt64.patch"
+          python3 android/tools/patch_dependencies.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Run production-code and policy regressions
+        run: |
+          python3 android/tools/test_pc_sync.py
+          python3 android/tools/test_render_010.py
+          python3 android/tools/test_render_011.py
+          python3 android/tools/test_shader_workers_012.py
+          python3 android/tools/test_diagnostics_013.py
+          python3 android/tools/test_visibility_012.py
+          python3 android/tools/test_mobile.py
+          python3 android/tools/test_matcher_math.py
+          python3 android/tools/test_native_render_017.py
+          python3 android/tools/test_vulkan_surface.py
+          python3 android/tools/test_queues018.py
+      - name: Compare Android blending with the PC path on software Vulkan
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y mesa-vulkan-drivers libx11-dev
+          git -C tools/rt64 submodule update --init src/contrib/dxc
+          git -C tools/rt64/src/contrib/plume submodule update --init contrib/volk contrib/VulkanMemoryAllocator
+          python3 android/tools/test_filter_013.py
+          VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu018.py
+          VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu011.py --filter-regression

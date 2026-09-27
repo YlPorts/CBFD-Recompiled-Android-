@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds a mod into its .nrm file. Run in WSL from the repo root:
+# Builds a mod into its .nrm file. Run on Linux, macOS or in WSL, from the repo root:
 #
 #   sh mods/build_mod.sh mods/skip_cutscenes
 #
@@ -7,11 +7,19 @@
 # template uses ld.lld; mips-linux-gnu-ld takes the same flags but --no-nmagic), then runs
 # N64Recomp's RecompModTool with the mod's mod.toml. The .nrm ends up in the mod's
 # build/ folder; copy it into the game's mods folder (the launcher's Mods menu can
-# open it) to install it. mods/syms/ must match the game build (recomp/run.sh
-# regenerates it).
+# open it) to install it. mods/syms/ (committed) must match the game build
+# (recomp/run.sh regenerates it).
 set -e
 MOD_DIR=$1
 ROOT=$(pwd)
+# A clang with the MIPS target. Apple's has none: on macOS use Homebrew's LLVM
+# (brew install llvm), or name one with CLANG=.
+if [ -z "$CLANG" ]; then
+    CLANG=clang
+    if [ "$(uname -s)" = Darwin ] && command -v brew >/dev/null 2>&1; then
+        CLANG="$(brew --prefix)/opt/llvm/bin/clang"
+    fi
+fi
 CFLAGS="-target mips -mips2 -mabi=32 -O2 -G0 -mno-abicalls -mno-odd-spreg -mno-check-zero-division \
     -fomit-frame-pointer -ffast-math -fno-unsafe-math-optimizations -fno-builtin-memset -funsigned-char \
     -fno-builtin-sinf -fno-builtin-cosf -ffunction-sections -nostdinc -D_LANGUAGE_C -DMIPS \
@@ -23,7 +31,7 @@ mkdir -p "$MOD_DIR/build"
 OBJS=""
 for src in "$MOD_DIR"/src/*.c; do
     obj="$MOD_DIR/build/$(basename "${src%.c}").o"
-    clang $CFLAGS -c "$src" -o "$obj"
+    "$CLANG" $CFLAGS -c "$src" -o "$obj"
     OBJS="$OBJS $obj"
 done
 mips-linux-gnu-ld $OBJS -nostdlib -T mods/mod.ld -Map "$MOD_DIR/build/mod.map" \

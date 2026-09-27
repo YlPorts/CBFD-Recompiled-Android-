@@ -1,0 +1,246 @@
+diff --git a/tools/rt64/src/gui/rt64_debugger_inspector.cpp b/tools/rt64/src/gui/rt64_debugger_inspector.cpp
+--- a/tools/rt64/src/gui/rt64_debugger_inspector.cpp
++++ b/tools/rt64/src/gui/rt64_debugger_inspector.cpp
+@@ -778,12 +778,9 @@
+         if ((modifyCount > 0) && ImGui::CollapsingHeader("Modify")) {
+             ImGui::Indent();
+             for (size_t m = 0; m < modifyCount; m++) {
+-                const bool modifyZ = drawData.modifyPosUints[m * 2] & 0x1;
+-                const uint32_t modifyIndex = drawData.modifyPosUints[m * 2] >> 1;
+-                const uint32_t modifyValue = drawData.modifyPosUints[m * 2 + 1];
+-                ImGui::Text(modifyZ ? "Modify Z" : "Modify XY");
+-                ImGui::SameLine();
+-                ImGui::Text("#%u: %u (Raw value)", modifyIndex, modifyValue);
++                const uint32_t at = uint32_t(m) * 4;
++                ImGui::Text("Modify #%u: mask=%u XY=%08X Z=%08X", drawData.modifyPosUints[at],
++                    drawData.modifyPosUints[at+1], drawData.modifyPosUints[at+2], drawData.modifyPosUints[at+3]);
+             }
+ 
+             ImGui::Unindent();
+diff --git a/tools/rt64/src/hle/rt64_rsp.cpp b/tools/rt64/src/hle/rt64_rsp.cpp
+--- a/tools/rt64/src/hle/rt64_rsp.cpp
++++ b/tools/rt64/src/hle/rt64_rsp.cpp
+@@ -59,6 +59,7 @@
+         invViewProjMatrixStack[0] = hlslpp::float4x4(0.0f);
+         vertices.fill({});
+         indices.fill(0);
++        screenModifyRecords.reset();
+         used.reset();
+         lights.fill({});
+         segments.fill(0);
+@@ -849,6 +850,7 @@
+             lookAtIndices.emplace_back(curLookAtIndex);
+             indices[i] = uint32_t(globalIndex) + (i - dstIndex);
+             used[i] = false;
++            screenModifyRecords.resetSlot(i);
+ 
+             if constexpr (addEmptyVelocity) {
+                 velFloats.emplace_back(0.0f);
+@@ -938,6 +940,7 @@
+             lookAtIndices.emplace_back(lookAtIndices[globalIndex]);
+             posTransformed.emplace_back(posTransformed[globalIndex]);
+             posScreen.emplace_back(posScreen[globalIndex]);
++            screenModifyRecords.copySlot(dstIndex, newIndex, modifyPosUints);
+             indices[dstIndex] = newIndex;
+             used[dstIndex] = false;
+             globalIndex = indices[dstIndex];
+@@ -964,9 +967,7 @@
+             break;
+         }
+         case G_MWO_POINT_XYSCREEN: {
+-            // First bit being 0 indicates it should modify only XY.
+-            modifyPosUints.emplace_back(globalIndex << 1);
+-            modifyPosUints.emplace_back(value);
++            screenModifyRecords.update(dstIndex, globalIndex, false, value, modifyPosUints);
+ 
+             // We decode on the CPU anyway for draw area tracking and the debugger.
+             const uint16_t extX = (value >> 16) & 0xFFFF;
+@@ -976,12 +977,10 @@
+             break;
+         }
+         case G_MWO_POINT_ZSCREEN: {
+-            // First bit being 1 indicates it should modify only Z.
+-            modifyPosUints.emplace_back((globalIndex << 1) | 0x1);
+-            modifyPosUints.emplace_back(value);
++            screenModifyRecords.update(dstIndex, globalIndex, true, value, modifyPosUints);
+ 
+             // We decode on the CPU anyway for depth tracking, branchZ and the debugger.
+-            posScreen[globalIndex][2] = value / 65536.0f;
++            posScreen[globalIndex][2] = normalizedScreenDepth(value);
+             break;
+         }
+         default:
+diff --git a/tools/rt64/src/hle/rt64_rsp.h b/tools/rt64/src/hle/rt64_rsp.h
+--- a/tools/rt64/src/hle/rt64_rsp.h
++++ b/tools/rt64/src/hle/rt64_rsp.h
+@@ -3,6 +3,7 @@
+ //
+ 
+ #pragma once
++#include "rt64_screen_modify.h"
+ 
+ #include <array>
+ #include <bitset>
+@@ -158,6 +159,7 @@
+         int viewportStackSize;
+         std::array<int16_t, 4> clipRatios;
+         std::array<Vertex, RSP_MAX_VERTICES> vertices;
++        ScreenModifyRecords<RSP_MAX_VERTICES> screenModifyRecords;
+         std::array<uint32_t, RSP_MAX_VERTICES> indices;
+         std::bitset<RSP_MAX_VERTICES> used;
+         std::array<Light, RSP_MAX_LIGHTS + 1> lights;
+diff --git a/tools/rt64/src/hle/rt64_screen_modify.h b/tools/rt64/src/hle/rt64_screen_modify.h
+new file mode 100644
+--- /dev/null
++++ b/tools/rt64/src/hle/rt64_screen_modify.h
+@@ -0,0 +1,37 @@
++#pragma once
++#include <array>
++#include <cassert>
++#include <cstddef>
++#include <cstdint>
++#include <vector>
++namespace RT64 {
++// A record is [global vertex index, component mask, packed XY, packed Z].
++// One invocation writes each output vertex. Later commands overwrite a pending
++// component, while a clone inherits both components without altering its source.
++// RSP vertex-cache slots are invalidated on load and at each task reset.
++template<std::size_t N> struct ScreenModifyRecords {
++    static constexpr uint32_t Missing=UINT32_MAX;
++    std::array<uint32_t,N> offsets{};
++    uint64_t xyCommands=0,zCommands=0,clones=0,coalesced=0;
++    ScreenModifyRecords() { reset(); }
++    void reset() { offsets.fill(Missing); xyCommands=zCommands=clones=coalesced=0; }
++    void resetSlot(std::size_t slot) { assert(slot<N); offsets[slot]=Missing; }
++    void copySlot(std::size_t slot,uint32_t vertex,std::vector<uint32_t>& words) {
++        assert(slot<N);const uint32_t old=offsets[slot];offsets[slot]=Missing;
++        if(old==Missing || std::size_t(old)+3>=words.size()) return;
++        const uint32_t mask=words[old+1],xy=words[old+2],z=words[old+3];
++        offsets[slot]=uint32_t(words.size());words.insert(words.end(),{vertex,mask,xy,z});++clones;
++    }
++    void update(std::size_t slot,uint32_t vertex,bool z,uint32_t value,std::vector<uint32_t>& words) {
++        assert(slot<N);uint32_t& at=offsets[slot];
++        if(at==Missing || std::size_t(at)+3>=words.size() || words[at]!=vertex) {
++            at=uint32_t(words.size());words.insert(words.end(),{vertex,0,0,0});
++        } else ++coalesced;
++        words[at+1]|=z?2u:1u;words[at+(z?3:2)]=value;
++        if(z) ++zCommands;else ++xyCommands;
++    }
++};
++// F3DEX screen-Z is 16.16 with 10 integer depth bits. RT64's viewport already
++// normalizes those integer bits to [0,1); modify must use the same units.
++inline float normalizedScreenDepth(uint32_t raw) { return float(raw)*(1.0f/67108864.0f); }
++}
+diff --git a/tools/rt64/src/hle/rt64_workload.h b/tools/rt64/src/hle/rt64_workload.h
+--- a/tools/rt64/src/hle/rt64_workload.h
++++ b/tools/rt64/src/hle/rt64_workload.h
+@@ -82,7 +82,7 @@
+         }
+ 
+         uint32_t modifyCount() const {
+-            return uint32_t(modifyPosUints.size()) / 2;
++            return uint32_t(modifyPosUints.size()) / 4;
+         }
+ 
+         uint32_t rawTriVertexCount() const {
+diff --git a/tools/rt64/src/render/rt64_framebuffer_renderer.cpp b/tools/rt64/src/render/rt64_framebuffer_renderer.cpp
+--- a/tools/rt64/src/render/rt64_framebuffer_renderer.cpp
++++ b/tools/rt64/src/render/rt64_framebuffer_renderer.cpp
+@@ -3,6 +3,10 @@
+ //
+ 
+ #include "rt64_framebuffer_renderer.h"
++#ifdef __ANDROID__
++#include "mobile_frame_coverage.hpp"
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include "../include/rt64_extended_gbi.h"
+ 
+@@ -1548,6 +1552,20 @@
+                     }
+ 
+                     clearRect.rect = convertFixedRect(call.callDesc.rect, p.resolutionScale, p.fbWidth, invRatioScale, extOriginPercentage, horizontalMisalignment, call.callDesc.rectLeftOrigin, call.callDesc.rectRightOrigin);
++#ifdef __ANDROID__
++                    // Use the game's requested clear color, not an overlay covering
++                    // the final image. Only extend a full-width background clear.
++                    const auto& clear = call.callDesc.rect;
++                    const auto& clip = call.callDesc.scissorRect;
++                    if (p.fbStorage->colorTarget != nullptr && wideWidth > originalWidth + 1.0f &&
++                        call.callDesc.rectLeftOrigin == G_EX_ORIGIN_NONE && call.callDesc.rectRightOrigin == G_EX_ORIGIN_NONE &&
++                        conker::mobile::is_full_width_clear(clear.ulx,clear.uly,clear.lrx,clear.lry,
++                            clip.ulx,clip.uly,clip.lrx,clip.lry,p.fbWidth)) {
++                        clearRect.rect.left = 0;
++                        clearRect.rect.right = int32_t(std::ceil(wideWidth));
++                        conker::mobile::metrics.edgeClears.fetch_add(1,std::memory_order_relaxed);
++                    }
++#endif
+                 }
+                 else if (call.callDesc.extendedType != DrawExtendedType::None) {
+                     switch (call.callDesc.extendedType) {
+diff --git a/tools/rt64/src/render/rt64_rsp_processor.cpp b/tools/rt64/src/render/rt64_rsp_processor.cpp
+--- a/tools/rt64/src/render/rt64_rsp_processor.cpp
++++ b/tools/rt64/src/render/rt64_rsp_processor.cpp
+@@ -77,7 +77,9 @@
+             worker->commandList->setComputePushConstants(0, &processCB);
+             worker->commandList->setComputeDescriptorSet(processSet->get(), 0);
+             worker->commandList->dispatch(dispatchCount, 1, 1);
+-            worker->commandList->barriers(RenderBarrierStage::GRAPHICS, afterBarriers, uint32_t(std::size(afterBarriers)));
++            // The following modify compute pass reads these positions, not only raster.
++            const auto consumers = modifyCB.modifyCount ? RenderBarrierStage::GRAPHICS_AND_COMPUTE : RenderBarrierStage::GRAPHICS;
++            worker->commandList->barriers(consumers, afterBarriers, uint32_t(std::size(afterBarriers)));
+         }
+ 
+         if (modifyCB.modifyCount > 0) {
+diff --git a/tools/rt64/src/shaders/RSPModifyCS.hlsl b/tools/rt64/src/shaders/RSPModifyCS.hlsl
+--- a/tools/rt64/src/shaders/RSPModifyCS.hlsl
++++ b/tools/rt64/src/shaders/RSPModifyCS.hlsl
+@@ -18,19 +18,19 @@
+         return;
+     }
+ 
+-    const uint modifyOffset = modifyIndex * 2;
+-    const bool modifyZ = srcModifyPos[modifyOffset] & 0x1;
+-    const uint vertexIndex = srcModifyPos[modifyOffset] >> 1;
+-    const uint modifyValue = srcModifyPos[modifyOffset + 1];
+-    if (modifyZ) {
+-        screenPos[vertexIndex].z = modifyValue / 65536.0f;
++    const uint modifyOffset = modifyIndex * 4;
++    const uint vertexIndex = srcModifyPos[modifyOffset];
++    const uint mask = srcModifyPos[modifyOffset + 1];
++    float4 outputPosition = screenPos[vertexIndex];
++    if (mask & 1) {
++        const uint xy = srcModifyPos[modifyOffset + 2];
++        const int x = int(xy & 0xFFFF0000) >> 16;
++        const int y = int(xy << 16) >> 16;
++        outputPosition.xy = float2(x, y) * 0.25f;
+     }
+-    else {
+-        const uint extX = (modifyValue >> 16) & 0xFFFF;
+-        const uint extY = modifyValue & 0xFFFF;
+-        const int intX = int(extX) << 16 >> 16;
+-        const int intY = int(extY) << 16 >> 16;
+-        screenPos[vertexIndex].x = intX / 4.0f;
+-        screenPos[vertexIndex].y = intY / 4.0f;
++    if (mask & 2) {
++        // Same depth units as RSPViewport.scale.z and translate.z.
++        outputPosition.z = float(srcModifyPos[modifyOffset + 3]) * (1.0f / 67108864.0f);
+     }
++    screenPos[vertexIndex] = outputPosition;
+ }
+\ No newline at end of file
+diff --git a/tools/rt64/src/shaders/RSPProcessCS.hlsl b/tools/rt64/src/shaders/RSPProcessCS.hlsl
+--- a/tools/rt64/src/shaders/RSPProcessCS.hlsl
++++ b/tools/rt64/src/shaders/RSPProcessCS.hlsl
+@@ -63,7 +63,10 @@
+     // NDC Position.
+     const float3 pos = float3(srcPos[posIndex + 0], srcPos[posIndex + 1], srcPos[posIndex + 2]);
+     const float3 vel = float3(srcVel[posIndex + 0], srcVel[posIndex + 1], srcVel[posIndex + 2]);
+-    float4 tfPos = mul(mul(viewProjMat, worldMat), float4(pos - vel * (1.0f - gConstants.curFrameWeight), 1.0f));
++    // Associate two matrix-vector products instead of rebuilding a 4x4 product
++    // for every vertex. Keep the full matrices (including scale/shear/reflection).
++    const float4 worldPosition = mul(worldMat, float4(pos - vel * (1.0f - gConstants.curFrameWeight), 1.0f));
++    float4 tfPos = mul(viewProjMat, worldPosition);
+ 
+     // Fog.
+     const uint fogIndex = srcFogIndices[vertexOffsetIndex];

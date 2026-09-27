@@ -1,0 +1,34 @@
+diff --git a/tools/rt64/src/contrib/plume/plume_vulkan.cpp b/tools/rt64/src/contrib/plume/plume_vulkan.cpp
+--- a/tools/rt64/src/contrib/plume/plume_vulkan.cpp
++++ b/tools/rt64/src/contrib/plume/plume_vulkan.cpp
+@@ -10,6 +10,7 @@
+ 
+ #include "plume_vulkan.h"
+ #ifdef __ANDROID__
++#include "mobile_blend_policy.hpp"
+ #include "surface_lifecycle.hpp"
+ #endif
+ #if defined(__ANDROID__)
+@@ -4143,11 +4144,18 @@
+         deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+         deviceFeatures.pNext = featuresChain;
+         vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures);
+-        capabilities.dualSourceBlend = deviceFeatures.features.dualSrcBlend;
++        const bool reportedDualSourceBlend = deviceFeatures.features.dualSrcBlend;
++        bool mobileDualSourceWorkaround = false;
++#if defined(__ANDROID__)
++        mobileDualSourceWorkaround = conker::mobile::mali_g57_dual_source_workaround(
++            physicalDeviceProperties.vendorID, physicalDeviceProperties.deviceName);
++#endif
++        capabilities.dualSourceBlend = reportedDualSourceBlend && !mobileDualSourceWorkaround;
+         capabilities.depthClamp = deviceFeatures.features.depthClamp;
+-        fprintf(stderr, "[gpu-caps] dualSrcBlend=%u depthClamp=%u independentBlend=%u maxDualSourceAttachments=%u\n",
+-            deviceFeatures.features.dualSrcBlend, deviceFeatures.features.depthClamp,
+-            deviceFeatures.features.independentBlend, physicalDeviceProperties.limits.maxFragmentDualSrcAttachments);
++        fprintf(stderr, "[gpu-caps] dualSrcBlendReported=%u dualSrcBlendEffective=%u depthClamp=%u independentBlend=%u maxDualSourceAttachments=%u maliG57Compat=%u vendor=0x%04x device=%s\n",
++            reportedDualSourceBlend, capabilities.dualSourceBlend, deviceFeatures.features.depthClamp,
++            deviceFeatures.features.independentBlend, physicalDeviceProperties.limits.maxFragmentDualSrcAttachments,
++            mobileDualSourceWorkaround, physicalDeviceProperties.vendorID, physicalDeviceProperties.deviceName);
+ 
+         // Check for properties.
+         if (rayTracingFound) {

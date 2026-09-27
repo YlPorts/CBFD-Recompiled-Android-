@@ -12,6 +12,12 @@
 import os, re, subprocess, sys
 
 args = sys.argv[1:]
+unknown = [a for a in args if a.startswith('-') and a not in ('--limit', '--max-size', '--resume', '--apply')]
+if unknown:
+    # Any other option (even --help) would otherwise start a whole batch: print the
+    # usage in the comment above instead.
+    usage = [line[2:] for line in open(__file__).read().splitlines()[1:11]]
+    sys.exit('\n'.join(usage) + f'\nunknown option: {" ".join(unknown)}')
 limit = int(args[args.index('--limit') + 1]) if '--limit' in args else None
 max_size = int(args[args.index('--max-size') + 1]) if '--max-size' in args else 10 ** 9
 flag_values = {args[i + 1] for i, a in enumerate(args[:-1]) if a in ('--limit', '--max-size')}

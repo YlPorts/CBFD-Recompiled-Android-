@@ -6,7 +6,8 @@ inline ultramodern::renderer::GraphicsConfig mobile_profile() {
     using namespace ultramodern::renderer;
     GraphicsConfig config{};
     config.developer_mode = false;
-    config.res_option = Resolution::Original2x;
+    // The Android RT64 adapter owns the fixed 1080-line policy for every VI mode.
+    config.res_option = Resolution::Auto;
     config.wm_option = WindowMode::Fullscreen;
     config.hr_option = HUDRatioMode::Clamp16x9;
     config.api_option = GraphicsApi::Vulkan;

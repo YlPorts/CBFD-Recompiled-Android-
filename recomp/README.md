@@ -1,8 +1,10 @@
 # Static recompilation (N64Recomp)
 
-Turns the decomp's US ELF into C with [N64Recomp](../tools/N64Recomp) and runs
-it on [N64ModernRuntime](../tools/N64ModernRuntime) through the host
-application in [`host/`](../host).
+Turns the game's code into C with [N64Recomp](../tools/N64Recomp) and runs it on
+[N64ModernRuntime](../tools/N64ModernRuntime) through the host application in
+[`host/`](../host). The code comes from your ROM; which functions there are, and
+where, comes from the decompilation, through the committed
+[`conker.us.syms.toml`](conker.us.syms.toml).
 
 **Status:** the game runs on Windows in a window, rendered by
 [RT64](../tools/rt64), and can be played with a game controller or the
@@ -13,39 +15,50 @@ runs on Linux; it has been tested under WSL with software Vulkan.
 
 ## Building and running
 
-On Linux (or in WSL), from the repo root, after building the decomp (`make` in
-`conker/conker`, see the main README):
+`build.cmd` (Windows) and `build.sh` (Linux) in the repo root do everything; see the
+main README. The recompilation step is [`recompile.py`](recompile.py), which only
+needs Python's standard library, N64Recomp and RSPRecomp:
+
+1. [`unpack_rom.py`](unpack_rom.py) unpacks the code from `conker/baserom.us.z64`
+   into `recomp/build/`: the header, boot code and `.init` as they are, `.game`
+   decompressed (Rare's rzip: an XORed table of raw deflate blocks, then the data),
+   and `.debugger`. That's the same image the decompilation's extraction makes, and
+   its SHA-1 is checked. A copy gets the words in
+   [`code_rewrites.txt`](code_rewrites.txt) (see `prepare_elf.py` below).
+2. N64Recomp recompiles it with `conker.toml`, which reads the functions from
+   `conker.us.syms.toml`.
+3. `emit_tlb_pages.py` writes `RecompiledFuncs/tlb_pages.c` (see the memory layout).
+4. RSPRecomp recompiles the audio microcode.
+
+It records hashes of the files that shape `RecompiledFuncs/` (`conker.toml`, the
+symbols, the N64Recomp patch, ...), and CMake stops with "RecompiledFuncs/ is out of
+date" when any of them has changed since: run the build script again after pulling.
+
+### Developers: regenerating the symbols
+
+`conker.us.syms.toml`, `code_rewrites.txt` and `mods/syms/` are generated from the
+decompilation, on Linux or in WSL, after building it (`make` in `conker/conker`,
+or `./build.sh --decomp`, which does all of this):
 
 ```sh
-git -C tools/N64Recomp apply ../../recomp/n64recomp.patch
-git -C tools/N64ModernRuntime apply ../../recomp/n64modernruntime.patch
-(cd tools/N64Recomp/build && ninja N64Recomp)
-
-sh recomp/run.sh                 # -> RecompiledFuncs/ (gitignored)
-cmake -S host -B host/build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build host/build
-cd host/build && ./ConkerRecomp --rom ../../conker/baserom.us.z64 --seconds 30
+sh recomp/run.sh
 ```
 
-`run.sh` records hashes of the files that shape `RecompiledFuncs/` (`conker.toml`,
-`prepare_elf.py`, the N64Recomp patch, ...), and CMake stops with "RecompiledFuncs/
-is out of date" when any of them has changed since: rerun `sh recomp/run.sh` after
-pulling, then build.
+It runs `prepare_elf.py` on the decomp's ELF, has N64Recomp dump the prepared ELF's
+functions and data symbols (`--dump-context`, with `conker.toml` pointed at the
+ELF), and turns those into the symbols file with [`make_syms.py`](make_syms.py):
+every ELF section in the ELF's order, so the section indices stay the same;
+`recomp_entrypoint`, at the KSEG0 alias 0x80001000 of `.init`'s first function,
+with its ROM address given directly (the N64Recomp patch reads a `rom` field for
+that); and where two names share an address, the descriptive one first. The
+rewrites are the words where the prepared ELF's code differs from the ROM's. Then
+it recompiles with `recompile.py`. Recompiling from the symbols file gives the same
+code as from the ELF, function for function
+([`compare_recomp_output.py`](compare_recomp_output.py) compares two outputs).
+Commit the regenerated files.
 
 `tools/N64Recomp` (ffb39cd) and `tools/N64ModernRuntime` (cdf5abb) are
 untracked checkouts, so their changes live in the patch files here.
-
-### Windows, with RT64
-
-`RecompiledFuncs/` comes from the WSL step above. Then, from the repo root, with
-Visual Studio 2022 or later (Build Tools is enough, with the C++ workload), CMake and Ninja:
-
-```bat
-git -C tools/N64ModernRuntime apply ../../recomp/n64modernruntime.patch
-git -C tools/rt64 apply ../../recomp/rt64.patch
-host\build_windows.cmd
-host\build-win\ConkerRecomp.exe
-```
 
 `tools/rt64` is an untracked checkout of rt64/rt64 at 4337374, and
 `tools/RecompFrontend` one of N64Recomp/RecompFrontend at b1a1477, both with their
@@ -191,6 +204,10 @@ N64ModernRuntime (`n64modernruntime.patch`):
   `__osRunningThread` pointing at the running thread (Conker reads it
   directly).
 - GCC-only warning flags are skipped under MSVC.
+- A mod's patch keeps the patched page executable while it's written. It was
+  made read-write only, and another thread running code on the same page (RT64's
+  idle thread, every millisecond) crashed as the game started with mods on.
+  macOS keeps read-write only, as Apple Silicon doesn't allow both.
 
 RT64 (`rt64.patch`): Conker's graphics microcode, F3DEX2 with Rare's changes,
 as in GLideN64's `F3DEX2CBFD`. RT64 identifies a microcode by a hash of its
@@ -220,6 +237,17 @@ surface was cut at the 4:3 edges. Both checks, the wide viewport in
 now allow 4 pixels of slack (`CoversWidthSlack`). They must agree, or the 3D is
 stretched.
 
+A framebuffer pair whose triangles were all culled has no combined scissor, but
+its projection can share its transforms with a pair that did draw. Comparing
+with the null scissor turned the widening off for both, and the 3D flickered
+between 4:3 and widescreen (the hub, near the naughty/nice sign). Both checks
+now compare with the projection's own scissor in that case.
+
+The patch adds a rect aspect, `G_EX_ASPECT_ZOOM`: stretched to the width like
+`G_EX_ASPECT_STRETCH`, and scaled as much vertically about the middle of the
+scissor, so the rectangle keeps its proportions and loses its top and bottom.
+The pause menu's background, a saved copy of the 4:3 frame, is drawn with it.
+
 A rectangle whose scissor spans the frame (with the same slack) is clipped at
 the edges of the widened frame, as widened 3D is, instead of at the 4:3 area.
 Together with the game-side hooks in `host/src/widescreen.cpp`, that keeps
@@ -229,6 +257,36 @@ the same three commands as the game's `G_TEXRECT`. The enable goes where the
 sprite's pipe sync was, so the display lists don't grow; they're allocated to
 fit what the game writes.
 
+The patch also changes frame interpolation (a frame rate above the game's 30).
+RT64 draws frames between the game's by pairing each transform with last
+frame's; without help it guesses, from draw calls that look alike. Conker's
+characters were paired part with part at random, and the game batches their
+triangles differently from frame to frame, so they vibrated and came apart. The
+game now tells RT64 which is which (`host/src/interpolation.cpp`): each object
+drawn by `func_1502CCFC` is wrapped in a matrix group naming it, matched in the
+order drawn. In RT64:
+- a group with a different number of transforms than last frame isn't matched
+  for that frame (pairing in order would pair the parts after a change with
+  their neighbours'); the object is drawn as it is, and snaps once.
+- pushing or popping a group starts a new transform, even with the same matrix,
+  so the vertices drawn after a group don't count as its own.
+- a change of direction alone no longer counts as a teleport (`RigidBody`):
+  animations swing parts back and forth, and snapping them on each reversal
+  while the rest was interpolated made the model shake.
+- the camera is interpolated as a camera (the view matrix's inverse), not as a
+  view matrix: lerping the view's translation while the camera turns moves the
+  in-between camera off its path.
+- vertex motion is interpolated only if it's plausible (under 64 units a frame).
+
+A character's shadow (`func_15186794`) is the ground under it, clipped anew
+every frame and drawn with the shadow's texture projected onto it from the
+light. Its vertices can't be paired with last frame's, so it stepped at 30 fps.
+Its own group asks RT64 to interpolate only its texture coordinates: RT64 fits
+last frame's projection (a perspective map from world position to texture
+coordinates, by least squares) and takes each vertex's coordinates last frame
+from it, if the fit is close, covers the texture and moves no vertex more than
+a quarter of the texture.
+
 ## Audio
 
 Conker's audio microcode is an ABI-style ucode like libultra's `aspMain`
@@ -237,7 +295,7 @@ text is at ROM 0x291A0 and its data at 0x2C960. The first 0xF70 bytes are the
 main code (IMEM 0x1080). The 0x9C0-byte MP3 overlay (text offset 0xF70) is
 DMAed over the main code from IMEM 0x1238 and swaps it back when it's done.
 [`audio_ucode.toml`](audio_ucode.toml) describes this to RSPRecomp, which
-`run.sh` runs to produce `RecompiledFuncs/rsp/audio_ucode.cpp`.
+`recompile.py` runs to produce `RecompiledFuncs/rsp/audio_ucode.cpp`.
 
 The output is 22020 Hz stereo. `host/src/audio_output.cpp` queues it on an SDL
 device. The audio thread (`func_100095A0`) sizes each buffer from AI_LEN: 736
@@ -278,9 +336,9 @@ sources in `src/`; build one in WSL from the repo root with
 
 which compiles for MIPS with clang, links with `mips-linux-gnu-ld` (`ld.lld`
 isn't needed) and runs RecompModTool, leaving the `.nrm` in the mod's `build/`.
-Mods link against `mods/syms/conker.us.{syms,datasyms}.toml`, which
-`recomp/run.sh` regenerates with N64Recomp's `--dump-context`; rebuild mods
-after the game's function layout changes.
+Mods link against `mods/syms/conker.us.{syms,datasyms}.toml`, which are
+committed and which `recomp/run.sh` regenerates with N64Recomp's `--dump-context`;
+rebuild mods after the game's function layout changes.
 
 Mods can replace a game function (`RECOMP_PATCH`) or run code before it or
 when it returns (`RECOMP_HOOK`, `RECOMP_HOOK_RETURN`). Patching rewrites the
@@ -291,7 +349,7 @@ real ROM, so `conker::decompress_rom` (`host/src/overlays.cpp`) builds the ROM
 the recompiler saw instead: the original `.game` and `.debugger` code (which
 the exe already carries for the TLB pages) at their ROM addresses in the
 recompiled layout, plus the words `prepare_elf.py` rewrote
-(`emit_tlb_pages.py` emits both). Limits of hooks: a function with a jump
+(`code_rewrites.txt`; `emit_tlb_pages.py` emits both). Limits of hooks: a function with a jump
 table can't be hooked (its table is in `.game_data`, which the regenerated
 code can't see), and hooking a function that `conker.toml` hooks drops the
 toml hook. `func_1501BBB8` (reads the controllers once per game frame) makes

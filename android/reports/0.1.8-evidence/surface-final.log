@@ -1,0 +1,45 @@
+PASS: 40 Vulkan surface policy checks (no driver/gameplay test)
+[wsi] Android surface attached epoch=1 native=2340x1080
+[wsi] Advertised format=37 colorSpace=0
+[wsi] Selected format=37 colorSpace=0 (requested=44)
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] Swapchain ready: 2340x1080, 3 real images; epoch=1 recovered=0
+[wsi] First frame presented successfully
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] vkCreateSwapchainKHR: VK_ERROR_SURFACE_LOST_KHR (-1000000000 / 0xC4653600); no image access attempted.
+[wsi] create swapchain: VK_ERROR_SURFACE_LOST_KHR (-1000000000); retiring epoch=1, no busy retry
+[wsi] Android surface attached epoch=1 native=2340x1080
+[wsi] Advertised format=97 colorSpace=0
+[wsi] No supported UNORM/sRGB surface pair; setup refused safely.
+[wsi] Android surface attached epoch=1 native=2340x1080
+[wsi] Surface format query failed: VK_ERROR_SURFACE_LOST_KHR (-1000000000)
+[wsi] Android surface attached epoch=1 native=2340x1080
+[wsi] Advertised format=37 colorSpace=0
+[wsi] Selected format=37 colorSpace=0 (requested=44)
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] Swapchain image view creation failed.
+[wsi] Android surface attached epoch=3 native=2340x1080
+[wsi] Advertised format=37 colorSpace=0
+[wsi] Selected format=37 colorSpace=0 (requested=44)
+[wsi] No usable surface settings: usage=0x0 alpha=0x8 transforms=0x1
+[wsi] Android surface attached epoch=3 native=2340x1080
+[wsi] Advertised format=37 colorSpace=0
+[wsi] Selected format=37 colorSpace=0 (requested=44)
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] Swapchain ready: 2340x1080, 3 real images; epoch=3 recovered=0
+[wsi] surface capabilities: VK_ERROR_SURFACE_LOST_KHR (-1000000000); retiring epoch=3, no busy retry
+[wsi] Android surface attached epoch=5 native=2340x1080
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] Swapchain ready: 2340x1080, 3 real images; epoch=5 recovered=1
+[wsi] First frame presented successfully
+[wsi] vkQueuePresentKHR: VK_ERROR_SURFACE_LOST_KHR (-1000000000); retiring epoch=5, no busy retry
+[wsi] Android surface attached epoch=5 native=2340x1080
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] Swapchain ready: 2340x1080, 3 real images; epoch=5 recovered=1
+[wsi] acquire image: VK_ERROR_SURFACE_LOST_KHR (-1000000000); retiring epoch=5, no busy retry
+[wsi] Android surface attached epoch=5 native=2340x1080
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] Swapchain ready: 2340x1080, 3 real images; epoch=5 recovered=1
+[wsi] recovery format: VK_ERROR_FORMAT_NOT_SUPPORTED (-11); retiring epoch=7, no busy retry
+PASS: 167 actual Plume swapchain method checks with mocked SDL/Vulkan (not gameplay)
+PASS: 3 RT64 initialization/pipeline integration checks

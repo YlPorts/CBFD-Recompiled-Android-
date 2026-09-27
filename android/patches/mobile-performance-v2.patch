@@ -1,0 +1,507 @@
+diff --git a/tools/rt64/src/common/rt64_thread.cpp b/tools/rt64/src/common/rt64_thread.cpp
+--- a/tools/rt64/src/common/rt64_thread.cpp
++++ b/tools/rt64/src/common/rt64_thread.cpp
+@@ -6,6 +6,10 @@
+ 
+ #include <cassert>
+ #include <thread>
++#ifdef __ANDROID__
++#include <sys/resource.h>
++#include <unistd.h>
++#endif
+ 
+ #if defined(_WIN64)
+ #   include <Windows.h>
+@@ -55,6 +59,13 @@
+     void Thread::setCurrentThreadPriority(Priority priority) {
+ #   if defined(_WIN32)
+         SetThreadPriority(GetCurrentThread(), toWindowsPriority(priority));
++#   elif defined(__ANDROID__)
++        // Android/Linux nice is per native thread when the TID is specified.
++        // Only lower background priority: no root, negative nice or RT scheduler.
++        if (priority == Priority::Idle || priority == Priority::Lowest || priority == Priority::Low) {
++            const int niceness = priority == Priority::Idle ? 10 : 5;
++            (void)setpriority(PRIO_PROCESS, static_cast<id_t>(gettid()), niceness);
++        }
+ #   elif defined(__linux__) || defined(__APPLE__)
+         // On Linux, thread priorities can't be changed under the default scheduler policy (SCHED_OTHER) and the other policies
+         // that are available without root privileges are lower priority. Instead you can set the thread's "nice" value, which ranges
+diff --git a/tools/rt64/src/common/rt64_timer.cpp b/tools/rt64/src/common/rt64_timer.cpp
+--- a/tools/rt64/src/common/rt64_timer.cpp
++++ b/tools/rt64/src/common/rt64_timer.cpp
+@@ -6,6 +6,9 @@
+ #include <thread>
+ 
+ #include "rt64_timer.h"
++#ifdef __ANDROID__
++#include "mobile_render_safety.hpp"
++#endif
+ 
+ namespace RT64 {
+     // Timer
+@@ -22,6 +25,13 @@
+     }
+ 
+     void Timer::preciseSleepUntil(const Timestamp endTime) {
++#ifdef __ANDROID__
++        // Sleep the coarse part once instead of waking every 100 us for a whole
++        // display interval. Preserve the upstream calibrated precision tail.
++        const auto coarseRemaining = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - current()).count();
++        const auto coarseSleep = conker::mobile::bulk_sleep_ns(coarseRemaining);
++        if (coarseSleep > 0) std::this_thread::sleep_for(std::chrono::nanoseconds(coarseSleep));
++#endif
+         auto startTime = std::chrono::high_resolution_clock::now();
+         int64_t remainingNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
+         if (remainingNanoseconds < 0) {
+diff --git a/tools/rt64/src/hle/rt64_application.cpp b/tools/rt64/src/hle/rt64_application.cpp
+--- a/tools/rt64/src/hle/rt64_application.cpp
++++ b/tools/rt64/src/hle/rt64_application.cpp
+@@ -374,8 +374,16 @@
+         // Create the shader caches.
+         // Estimate the amount of shader compiler threads by trying to use about half of the system's available threads.
+         // We need the ubershader pipelines done as soon as possible, so we use a different thread count that demands more of the system.
++#ifdef __ANDROID__
++        // Leave CPU time for the game, audio, Java input and the render queues on
++        // big.LITTLE phones. Shader variants/output are unchanged.
++        const uint32_t rasterShaderThreads = std::min(std::max(threadsAvailable / 2U, 1U), 2U);
++        const uint32_t ubershaderThreads = std::min(std::max(threadsAvailable, 1U), 2U);
++        std::fprintf(stderr, "[mobile] shader workers=%u; initial pipeline workers=%u\n", rasterShaderThreads, ubershaderThreads);
++#else
+         const uint32_t rasterShaderThreads = std::max(threadsAvailable / 2U, 1U);
+         const uint32_t ubershaderThreads = uint32_t(std::max(int(threadsAvailable) - 2, 1));
++#endif
+         rasterShaderCache = std::make_unique<RasterShaderCache>(rasterShaderThreads, ubershaderThreads);
+         rasterShaderCache->setup(device.get(), renderInterface->getCapabilities().shaderFormat, shaderLibrary.get(), multisampling);
+ 
+@@ -386,7 +394,11 @@
+ #   endif
+ 
+         // Create the texture cache.
++#ifdef __ANDROID__
++        const uint32_t textureCacheThreads = 1;
++#else
+         const uint32_t textureCacheThreads = std::max(threadsAvailable / 4U, 1U);
++#endif
+         textureCache = std::make_unique<TextureCache>(textureDirectWorker.get(), textureCopyWorker.get(), textureCacheThreads, shaderLibrary.get());
+ 
+         // Compute the approximate pool for texture replacements from the dedicated video memory.
+diff --git a/tools/rt64/src/hle/rt64_game_frame.cpp b/tools/rt64/src/hle/rt64_game_frame.cpp
+--- a/tools/rt64/src/hle/rt64_game_frame.cpp
++++ b/tools/rt64/src/hle/rt64_game_frame.cpp
+@@ -8,6 +8,10 @@
+ #include "rt64_workload_queue.h"
+ 
+ #include "xxHash/xxh3.h"
++#ifdef __ANDROID__
++#include "mobile_match_policy.hpp"
++#include "mobile_metrics.hpp"
++#endif
+ 
+ namespace RT64 {
+     // GameFrame
+@@ -48,6 +52,11 @@
+         const FramebufferPair &fbPair = workload.fbPairs[proj.fbPairIndex];
+         const Projection &fbProj = fbPair.projections[proj.projectionIndex];
+         const GameIndices::Projection &firstProj = scene.projections.front();
++#ifdef __ANDROID__
++        // The frame map indexes geometry/tiles per workload. Do not merge two
++        // workloads into a scene whose matcher writes only its first map.
++        if(firstProj.workloadIndex != proj.workloadIndex) return false;
++#endif
+         if (!areFramebufferPairsCompatible(workloadQueue, { firstProj.workloadIndex, firstProj.fbPairIndex }, { proj.workloadIndex, proj.fbPairIndex })) {
+             return false;
+         }
+@@ -343,6 +352,10 @@
+                 const hlslpp::float4x4 &curProjTransform = curWorkload.drawData.projTransforms[curProj.transformsIndex];
+                 for (uint32_t j = 0; j < prevScenes.size(); j++) {
+                     const GameIndices::Projection prevFirstProj = prevScenes[j].projections[0];
++#ifdef __ANDROID__
++                    const auto& mapping=frameMap.workloads[curFirstProj.workloadIndex];
++                    if(!mapping.mapped || mapping.prevWorkloadIndex!=prevFirstProj.workloadIndex) continue;
++#endif
+                     const Workload &prevWorkload = workloadQueue.workloads[prevFirstProj.workloadIndex];
+                     const FramebufferPair &prevFbPair = prevWorkload.fbPairs[prevFirstProj.fbPairIndex];
+                     const Projection &prevProj = prevFbPair.projections[prevFirstProj.projectionIndex];
+@@ -434,7 +447,8 @@
+ 
+             // Projection for the entire scene has been matched already, copy the mapping.
+             if (mappedViewProjIndex < UINT32_MAX) {
+-                firstCurWorkloadMap.viewProjections[curProj.transformsIndex] = firstCurWorkloadMap.viewProjections[mappedViewProjIndex];
++                if(curProjIndices.workloadIndex==firstCurProjIndices.workloadIndex)
++                    firstCurWorkloadMap.viewProjections[curProj.transformsIndex] = firstCurWorkloadMap.viewProjections[mappedViewProjIndex];
+             }
+ 
+             // Can't map to a previous projection.
+@@ -510,17 +524,53 @@
+         }
+ 
+         // FIXME: Transform set needs to be done per unique workload detected.
+-        thread_local std::set<IndexPair> transformCheckSet;
+-        thread_local std::set<IndexPair> tileCheckSet;
+-        thread_local std::set<IndexPair> lookAtCheckSet;
++        thread_local std::vector<IndexPair> transformCheckSet;
++        thread_local std::vector<IndexPair> tileCheckSet;
++        thread_local std::vector<IndexPair> lookAtCheckSet;
+         transformCheckSet.clear();
+         tileCheckSet.clear();
+         lookAtCheckSet.clear();
+ 
+-        // Traverse the map and fill the set with all the combinations of transforms to check.
+-        for (std::pair<uint64_t, GameCallMap> curIt : curCallHashMap) {
+-            auto prevRange = prevCallHashMap.equal_range(curIt.first);
+-            for (auto prevIt = prevRange.first; prevIt != prevRange.second; prevIt++) {
++        // Cache mesh identities once. Different geometry may share identical RDP
++        // state/triangle counts; it is not a safe automatic interpolation partner.
++#ifdef __ANDROID__
++        thread_local std::vector<uint64_t> curMeshHashes, prevMeshHashes;
++        thread_local std::vector<uint32_t> curMeshCounts, prevMeshCounts;
++        auto meshIdentities = [](const Workload& w, auto& hashes, auto& counts) {
++            const auto& d=w.drawData;
++            hashes.resize(d.worldTransforms.size());counts.resize(d.worldTransforms.size());
++            for(uint32_t i=0;i<d.worldTransforms.size();++i) {
++                counts[i]=d.worldTransformVertexCount(i);
++                hashes[i]=counts[i]?XXH3_64bits(d.posFloats.data()+size_t(d.worldTransformVertexIndices[i])*3,
++                    size_t(counts[i])*3*sizeof(float)):0;
++            }
++        };
++        meshIdentities(firstCurWorkload,curMeshHashes,curMeshCounts);
++        meshIdentities(firstPrevWorkload,prevMeshHashes,prevMeshCounts);
++        uint64_t pairsConsidered=0,pairsAvoided=0,meshRejected=0;
++#endif
++        // Walk contiguous material buckets. Small buckets are exhaustive; dense
++        // indistinguishable ones have a bounded temporal neighborhood on mobile.
++        thread_local std::vector<std::pair<uint64_t,GameCallMap>> curBucket,prevBucket;
++        for(auto group=curCallHashMap.begin();group!=curCallHashMap.end();) {
++            auto currentRange=curCallHashMap.equal_range(group->first);
++            auto previousRange=prevCallHashMap.equal_range(group->first);
++            curBucket.assign(currentRange.first,currentRange.second);
++            prevBucket.assign(previousRange.first,previousRange.second);
++            group=currentRange.second;
++            for(size_t ordinal=0;ordinal<curBucket.size();++ordinal) {
++                const auto& curIt=curBucket[ordinal];
++#ifdef __ANDROID__
++                auto window=conker::mobile::candidate_window(ordinal,curBucket.size(),prevBucket.size());
++                pairsAvoided+=prevBucket.size()-(window.second-window.first);
++#else
++                auto window=std::make_pair(size_t(0),prevBucket.size());
++#endif
++            for (size_t pi=window.first;pi<window.second;++pi) {
++                const auto* prevIt=&prevBucket[pi];
++#ifdef __ANDROID__
++                ++pairsConsidered;
++#endif
+                 const GameIndices::Projection &curProjIndices = curScene.projections[curIt.second.sceneProjIndex];
+                 const Workload &curWorkload = workloadQueue.workloads[curProjIndices.workloadIndex];
+                 const FramebufferPair &curFbPair = curWorkload.fbPairs[curProjIndices.fbPairIndex];
+@@ -542,7 +592,18 @@
+                         const uint32_t prevGroupIndex = prevWorkload.drawData.worldTransformGroups[prevWorldMatrix];
+                         const TransformGroup &prevGroup = prevWorkload.drawData.transformGroups[prevGroupIndex];
+                         if ((curGroup.matrixId == prevGroup.matrixId) && ((curGroup.matrixId == G_EX_ID_AUTO) || ((curGroup.matrixId != G_EX_ID_IGNORE) && (curGroup.ordering == G_EX_ORDER_AUTO)))) {
+-                            transformCheckSet.emplace(curWorldMatrix, prevWorldMatrix);
++#ifdef __ANDROID__
++                            // This upstream matching map only supports one workload per
++                            // scene. Do not index a different workload's geometry/map.
++                            if(curProjIndices.workloadIndex!=firstCurProjIndices.workloadIndex ||
++                               prevProjIndices.workloadIndex!=firstPrevProjIndices.workloadIndex) continue;
++                            if (curGroup.matrixId==G_EX_ID_AUTO && !conker::mobile::same_mesh(
++                                curMeshHashes[curWorldMatrix],curMeshCounts[curWorldMatrix],
++                                prevMeshHashes[prevWorldMatrix],prevMeshCounts[prevWorldMatrix])) {
++                                ++meshRejected;continue;
++                            }
++#endif
++                            transformCheckSet.emplace_back(curWorldMatrix, prevWorldMatrix);
+                         }
+                     }
+                 }
+@@ -556,7 +617,7 @@
+                             continue;
+                         }
+ 
+-                        tileCheckSet.emplace(curCall.callDesc.tileIndex + t, prevCall.callDesc.tileIndex + t);
++                        tileCheckSet.emplace_back(curCall.callDesc.tileIndex + t, prevCall.callDesc.tileIndex + t);
+                     }
+                 }
+ 
+@@ -569,10 +630,24 @@
+                     const uint32_t prevVertexIndex = prevWorkload.drawData.faceIndices[prevCall.meshDesc.faceIndicesStart];
+                     const uint32_t curLookAtIndex = curWorkload.drawData.lookAtIndices[curVertexIndex] >> RSP_LOOKAT_INDEX_SHIFT;
+                     const uint32_t prevLookAtIndex = prevWorkload.drawData.lookAtIndices[prevVertexIndex] >> RSP_LOOKAT_INDEX_SHIFT;
+-                    lookAtCheckSet.emplace(curLookAtIndex, prevLookAtIndex);
+-                }
+-            }
+-        }
++                    lookAtCheckSet.emplace_back(curLookAtIndex, prevLookAtIndex);
++                }
++            }
++        }
++
++        } // current ordinal / material bucket
++        auto deduplicate=[](auto& v) {
++            std::sort(v.begin(),v.end());
++            v.erase(std::unique(v.begin(),v.end(),[](const auto& a,const auto& b) {
++                return a.first==b.first && a.second==b.second;
++            }),v.end());
++        };
++        deduplicate(transformCheckSet);deduplicate(tileCheckSet);deduplicate(lookAtCheckSet);
++#ifdef __ANDROID__
++        conker::mobile::metrics.matchPairs.fetch_add(pairsConsidered,std::memory_order_relaxed);
++        conker::mobile::metrics.matchPairsAvoided.fetch_add(pairsAvoided,std::memory_order_relaxed);
++        conker::mobile::metrics.meshRejected.fetch_add(meshRejected,std::memory_order_relaxed);
++#endif
+ 
+         // Compute all the differences between transforms and insert them into a vector that will be sorted according to the differences.
+         thread_local std::vector<MatchCandidate> matchCandidates;
+@@ -581,15 +656,36 @@
+         const RigidBody *prevRigidBody;
+         const hlslpp::float4x4 &firstCurViewProj = firstCurWorkload.drawData.viewProjTransforms[firstCurProj.transformsIndex];
+         const hlslpp::float4x4 &firstPrevViewProj = firstPrevWorkload.drawData.viewProjTransforms[firstPrevProj.transformsIndex];
++#ifdef __ANDROID__
++        thread_local std::vector<conker::mobile::MatchDescriptor> currentDescriptors,previousDescriptors;
++        auto descriptors=[](const auto& matrices,const hlslpp::float4x4& projection,
++                            const GameFrameMap::WorkloadMap* map,auto& out) {
++            float vp[16];for(int r=0;r<4;++r) for(int c=0;c<4;++c) vp[r*4+c]=projection[r][c];
++            out.resize(matrices.size());
++            for(size_t i=0;i<matrices.size();++i) {
++                float matrix[16],velocity[3]{};
++                for(int r=0;r<4;++r) for(int c=0;c<4;++c) matrix[r*4+c]=matrices[i][r][c];
++                if(map && i<map->transforms.size()) for(int c=0;c<3;++c) velocity[c]=map->transforms[i].rigidBody.linearVelocity[c];
++                out[i]=conker::mobile::describe_transform(matrix,vp,velocity);
++            }
++        };
++        descriptors(firstCurWorkload.drawData.worldTransforms,firstCurViewProj,nullptr,currentDescriptors);
++        descriptors(firstPrevWorkload.drawData.worldTransforms,firstPrevViewProj,firstPrevWorkloadMap,previousDescriptors);
++#endif
+         for (const IndexPair &indices : transformCheckSet) {
+             const hlslpp::float4x4 &curTransform = firstCurWorkload.drawData.worldTransforms[indices.first];
+             const hlslpp::float4x4 &prevTransform = firstPrevWorkload.drawData.worldTransforms[indices.second];
+             prevRigidBody = (firstPrevWorkloadMap != nullptr) ? &firstPrevWorkloadMap->transforms[indices.second].rigidBody : nullptr;
+ 
++#ifdef __ANDROID__
++            const float difference=conker::mobile::match_difference(currentDescriptors[indices.first],previousDescriptors[indices.second]);
++            if(std::isfinite(difference)) matchCandidates.emplace_back(indices.first,indices.second,difference);
++#else
+             TransformMatchResult matchResult = computeTransformMatch(curTransform, firstCurViewProj, prevTransform, firstPrevViewProj, prevRigidBody);
+             if (matchResult.valid) {
+                 matchCandidates.emplace_back(indices.first, indices.second, matchResult.computeDifference());
+             }
++#endif
+         }
+ 
+         ModifiedBuffers modifiedBuffers;
+@@ -802,7 +898,17 @@
+                 doTileMatching = doTileMatching || (group.tileInterpolation == G_EX_COMPONENT_AUTO);
+             }
+ 
+-            hashMap.emplace(hashFromCall(call, matrixIdHash), GameCallMap{ sceneProjIndex, c, doTransformMatching, doTileInterpolation, doTileMatching });
++            uint64_t callHash=hashFromCall(call,matrixIdHash);
++#ifdef __ANDROID__
++            // The old key grouped unrelated meshes solely by pipeline state.
++            // Retain tile order and hashes, not scrolling coordinates.
++            for(uint32_t t=0;t<call.callDesc.tileCount;++t) {
++                const auto identity=workload.drawData.callTiles[call.callDesc.tileIndex+t].tmemHashOrID;
++                callHash ^= identity + 0x9e3779b97f4a7c15ULL + (callHash<<6) + (callHash>>2);
++            }
++            callHash ^= uint64_t(call.callDesc.tileCount)*0x517cc1b727220a95ULL;
++#endif
++            hashMap.emplace(callHash, GameCallMap{ sceneProjIndex, c, doTransformMatching, doTileInterpolation, doTileMatching });
+         }
+     }
+ 
+@@ -835,7 +941,7 @@
+             uint32_t matrixIdHash;
+         };
+ 
+-        CallMatchKey key;
++        CallMatchKey key{};
+         key.colorCombiner = call.callDesc.colorCombiner;
+         key.otherMode = call.callDesc.otherMode;
+         key.geometryMode = call.callDesc.geometryMode;
+diff --git a/tools/rt64/src/hle/rt64_present_queue.cpp b/tools/rt64/src/hle/rt64_present_queue.cpp
+--- a/tools/rt64/src/hle/rt64_present_queue.cpp
++++ b/tools/rt64/src/hle/rt64_present_queue.cpp
+@@ -3,6 +3,9 @@
+ //
+ 
+ #include "rt64_present_queue.h"
++#ifdef __ANDROID__
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include "common/rt64_thread.h"
+ #include "rhi/rt64_render_hooks.h"
+@@ -402,6 +405,9 @@
+                 RenderCommandSemaphore *waitSemaphore = drawSemaphores[swapChainIndex].get();
+                 presentTimestamp = Timer::current();
+                 swapChainValid = ext.swapChain->present(swapChainIndex, &waitSemaphore, 1);
++#ifdef __ANDROID__
++                if (swapChainValid) conker::mobile::metrics.presents.fetch_add(1, std::memory_order_relaxed);
++#endif
+                 presentProfiler.logAndRestart();
+             }
+         }
+diff --git a/tools/rt64/src/hle/rt64_rigid_body.cpp b/tools/rt64/src/hle/rt64_rigid_body.cpp
+--- a/tools/rt64/src/hle/rt64_rigid_body.cpp
++++ b/tools/rt64/src/hle/rt64_rigid_body.cpp
+@@ -3,6 +3,7 @@
+ //
+ 
+ #include "rt64_rigid_body.h"
++#include <algorithm>
+ 
+ #include "../include/rt64_extended_gbi.h"
+ #include "common/rt64_math.h"
+@@ -49,7 +50,7 @@
+             const hlslpp::float3x3 invPrevRotation = hlslpp::inverse(rotationFrom3x3(extract3x3(prevTransform)));
+             const hlslpp::float3x3 diffRotation = hlslpp::mul(invPrevRotation, rotationFrom3x3(extract3x3(curTransform)));
+             float diffTrace = traceFrom3x3(diffRotation);
+-            float curAngularVelocity = std::acos((diffTrace - 1.0f) / 2.0f);
++            float curAngularVelocity = std::acos(std::clamp((diffTrace - 1.0f) / 2.0f, -1.0f, 1.0f));
+             angularVelocity = curAngularVelocity;
+ 
+             // FIXME: Defaults to always interpolate.
+@@ -88,6 +89,12 @@
+ 
+     
+     hlslpp::float4x4 RigidBody::lerp(float weight, const hlslpp::float4x4& fallbackPrev, const hlslpp::float4x4& fallbackCur, bool slerp) const {
++#ifdef __ANDROID__
++        // Exact current frames MUST preserve the matrix submitted by Conker.
++        // Decomposition/recomposition of skinning, shear or mirrored transforms
++        // is only needed between frames, never at the current-frame endpoint.
++        if(weight>=1.0f) return fallbackCur;
++#endif
+         // Return a linear component-wise interpolation of the fallback matrices if decomposition is disabled or if either decomposition is invalid.
+         if (!lerpDecompose || !transforms[0].valid || !transforms[1].valid) {
+             return lerpMatrixComponents(fallbackPrev, fallbackCur, lerpTranslation, lerpRotation, lerpPerspective, weight);
+diff --git a/tools/rt64/src/hle/rt64_rsp.cpp b/tools/rt64/src/hle/rt64_rsp.cpp
+--- a/tools/rt64/src/hle/rt64_rsp.cpp
++++ b/tools/rt64/src/hle/rt64_rsp.cpp
+@@ -3,6 +3,11 @@
+ //
+ 
+ #include "rt64_rsp.h"
++#ifdef __ANDROID__
++#include "mobile_render_safety.hpp"
++#include "mobile_clip_bounds.hpp"
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include <algorithm>
+ #include <cassert>
+@@ -1284,9 +1289,21 @@
+             maxMatrix = std::max(maxMatrix, worldIndices[globalIndex]);
+         }
+ 
+-        bool visibleTri = true;
++        bool conservativeBounds = false;
++        bool allBehind = false;
++#ifdef __ANDROID__
++        allBehind=true;
++        for (int i=0;i<3;++i) {
++            const auto index=globalIndices[i];const auto& screen=posScreen[index];
++            const float w=workload.drawData.posTransformed[index][3];
++            allBehind=allBehind && std::isfinite(w) && w<=0.f;
++            conservativeBounds |= conker::mobile::unsafe_screen_bounds(screen[0],screen[1],w);
++        }
++        if(allBehind) ++conker::mobile::localBoundsBehind;
++#endif
++        bool visibleTri = !allBehind;
+         const bool usesCulling = geometryMode & cullBothMask;
+-        if (usesCulling) {
++        if (usesCulling && !conservativeBounds) {
+             const hlslpp::float3 U = posScreen[globalIndices[1]] - posScreen[globalIndices[0]];
+             const hlslpp::float3 V = posScreen[globalIndices[2]] - posScreen[globalIndices[0]];
+             const hlslpp::float3 N = hlslpp::cross(V, U);
+@@ -1298,12 +1315,42 @@
+             fbPair.scissorRect.merge(scissorRect);
+ 
+             FixedRect drawRect;
+-            for (int i = 0; i < 3; i++) {
+-                const hlslpp::float3 &v = posScreen[globalIndices[i]];
+-                drawRect.ulx = std::min(drawRect.ulx, int32_t(v[0] * 4.0f));
+-                drawRect.uly = std::min(drawRect.uly, int32_t(v[1] * 4.0f));
+-                drawRect.lrx = std::max(drawRect.lrx, int32_t(hlslpp::ceil(v.x).x * 4.0f));
+-                drawRect.lry = std::max(drawRect.lry, int32_t(hlslpp::ceil(v.y).x * 4.0f));
++            if (conservativeBounds) {
++#ifdef __ANDROID__
++                const auto& vp=viewportStack[viewportStackSize-1];
++                std::array<conker::mobile::ClipPoint,3> triangle;
++                for(int i=0;i<3;++i) {
++                    const auto& v=workload.drawData.posTransformed[globalIndices[i]];
++                    const auto& screen=posScreen[globalIndices[i]];
++                    if(v[3]!=0 && std::isfinite(screen[0]) && std::isfinite(screen[1])) {
++                        // Preserve the vertex-time viewport and G_MODIFYVTX XY.
++                        triangle[i]={double(screen[0])*v[3],double(screen[1])*v[3],double(v[3])};
++                    } else {
++                        triangle[i]={double(v[0])*vp.scale[0]+double(v[3])*vp.translate[0],
++                                    -double(v[1])*vp.scale[1]+double(v[3])*vp.translate[1],double(v[3])};
++                    }
++                }
++                conker::mobile::ClipRect limit{scissorRect.ulx/4.0,scissorRect.uly/4.0,scissorRect.lrx/4.0,scissorRect.lry/4.0}, clipped;
++                auto result=conker::mobile::clip_bounds(triangle,limit,clipped,true);
++                if(result==conker::mobile::ClipResult::Visible) {
++                    drawRect.ulx=int32_t(std::floor(clipped.left*4));drawRect.uly=int32_t(std::floor(clipped.top*4));
++                    drawRect.lrx=int32_t(std::ceil(clipped.right*4));drawRect.lry=int32_t(std::ceil(clipped.bottom*4));
++                    ++conker::mobile::localBoundsClipped;
++                } else if(result==conker::mobile::ClipResult::Invalid) {
++                    drawRect=scissorRect;++conker::mobile::localBoundsFallback;
++                }
++#else
++                drawRect=scissorRect;
++#endif
++            }
++            else {
++                for (int i = 0; i < 3; i++) {
++                    const hlslpp::float3 &v = posScreen[globalIndices[i]];
++                    drawRect.ulx = std::min(drawRect.ulx, int32_t(v[0] * 4.0f));
++                    drawRect.uly = std::min(drawRect.uly, int32_t(v[1] * 4.0f));
++                    drawRect.lrx = std::max(drawRect.lrx, int32_t(hlslpp::ceil(v.x).x * 4.0f));
++                    drawRect.lry = std::max(drawRect.lry, int32_t(hlslpp::ceil(v.y).x * 4.0f));
++                }
+             }
+ 
+             const interop::RSPViewport &viewport = viewportStack[viewportStackSize - 1];
+diff --git a/tools/rt64/src/hle/rt64_workload_queue.cpp b/tools/rt64/src/hle/rt64_workload_queue.cpp
+--- a/tools/rt64/src/hle/rt64_workload_queue.cpp
++++ b/tools/rt64/src/hle/rt64_workload_queue.cpp
+@@ -3,6 +3,9 @@
+ //
+ 
+ #include "rt64_workload_queue.h"
++#ifdef __ANDROID__
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include "common/rt64_thread.h"
+ 
+@@ -848,6 +851,11 @@
+             queryPool->queryResults();
+             const uint64_t *frameTimestamps = queryPool->getResults();
+             rendererGPUProfiler.log(double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
++#ifdef __ANDROID__
++            if (frameTimestamps[1] >= frameTimestamps[0]) {
++                conker::mobile::gpu_sample(double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
++            }
++#endif
+ 
+             // Indicate to the texture cache it's safe to delete the textures if no locks are active.
+             ext.textureCache->decrementLock();
+@@ -859,6 +867,9 @@
+ 
+         framebufferRenderer->advanceFrame(workloadConfig.raytracingEnabled);
+         rendererCPUProfiler.end();
++#ifdef __ANDROID__
++        conker::mobile::render_sample(rendererCPUProfiler.accumulation);
++#endif
+         rendererCPUProfiler.log();
+         rendererCPUProfiler.reset();
+ #   endif
+@@ -983,6 +994,9 @@
+                     matchingProfiler.start();
+                     curFrame.match(ext.workloadGraphicsWorker, *this, prevFrame, ext.workloadVelocityUploader, velocityUploaderUsed, tileInterpolationUsed, lookAtInterpolationUsed);
+                     matchingProfiler.end();
++#ifdef __ANDROID__
++                    conker::mobile::match_sample(matchingProfiler.accumulation);
++#endif
+                     matchingProfiler.log();
+ 
+                     const bool displayRateAboveOriginal = (workload.viOriginalRate > 0) && (workloadConfig.targetRate > workload.viOriginalRate);

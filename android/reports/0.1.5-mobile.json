@@ -1,0 +1,66 @@
+{
+  "version": "0.1.5-alpha",
+  "versionCode": 6,
+  "package": "com.ylports.cbfd",
+  "base_commit": "b423dbf37e598b31d13fb9ad4330f7835778046a",
+  "publication": "local source checkpoint; not published to GitHub",
+  "apk_bytes": 20628075,
+  "apk_sha256": "10833e7e5a5d9e2905dba131200a91ac8451855aa759958e13bade5bfbe97b10",
+  "native_build": "Release, Android NDK 28.0.13004108, arm64-v8a, minSdk 26, full game/runtime/RT64/Plume/SDL",
+  "libraries": {
+    "lib/arm64-v8a/libmain.so": {
+      "bytes": 17333728,
+      "sha256": "8885bee83b729b275a4660394ebbb46f63aa123ef213cb1739ec00012bd2f083",
+      "elf_load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_0.1.4": true
+    },
+    "lib/arm64-v8a/libSDL2.so": {
+      "bytes": 1490536,
+      "sha256": "478e27febee9fd1d3e6217b57dce9730fe8f46ce0de3d4518289735854f0b781",
+      "elf_load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_0.1.4": true
+    },
+    "lib/arm64-v8a/libc++_shared.so": {
+      "bytes": 1728248,
+      "sha256": "836c4dfd05a30d786fd75ff39a3f4730b3fba313d63b0fde895361e8985d7f92",
+      "elf_load_alignments": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_0.1.4": false
+    }
+  },
+  "device_execution_tested": false,
+  "fps_measured_on_device": false,
+  "water_disappearance_verified_in_game": false,
+  "resolution_internal_scale": 2,
+  "target_presentation_fps": 60,
+  "checks": {
+    "rom_importer_synthetic": 42,
+    "touch_layout_and_pointer_ownership": 151,
+    "native_bounds_sleep_metrics_ubsan": 34,
+    "native_metrics_concurrent_samples": 40000,
+    "storage_policy": 16,
+    "vulkan_surface_policy": 40,
+    "actual_plume_methods_mocked_sdl_vulkan": 30,
+    "rt64_source_integration": 3,
+    "java_dex_build": true,
+    "full_arm64_release_link": true,
+    "patch_reapplication_idempotent": true
+  },
+  "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+  "same_certificate_as_0.1.4": true,
+  "signature_v2_v3_verified": true,
+  "zip_alignment_16KiB_verified": true,
+  "no_rom_or_signing_key_files_in_apk": true
+}

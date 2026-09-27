@@ -1,7 +1,9 @@
 // Mock platform resources for unit-testing the actual patched Plume swapchain methods.
 // NOT a GPU test, Android runtime, game renderer or distributable library.
 #pragma once
+#define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
+#include "../native/surface_lifecycle.hpp"
 #include "../native/vulkan_surface_policy.hpp"
 #include <algorithm>
 #include <cassert>
@@ -25,6 +27,9 @@ struct Driver {
  std::vector<VkSurfaceFormatKHR> formats{{VK_FORMAT_R8G8B8A8_UNORM,VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}};
  VkResult queryResult=VK_SUCCESS,createResult=VK_SUCCESS;
  bool failView=false;
+ VkResult presentResult=VK_SUCCESS,acquireResult=VK_SUCCESS;
+ unsigned surfaceCreates=0,surfaceDestroys=0,capQueries=0,queueWaits=0;
+ std::set<VkSurfaceKHR> surfaces;
  unsigned creates=0,destroys=0,presents=0,acquires=0,badHandles=0;
  VkSwapchainCreateInfoKHR last{};
  std::set<VkSwapchainKHR> live;
@@ -38,13 +43,25 @@ struct Driver {
  }
 } inline driver;
 inline unsigned checks=0;
+inline ANativeWindow nativeWindow;
+inline void publish(unsigned w=2340,unsigned h=1080) {
+ nativeWindow.w=w;nativeWindow.h=h;ANativeWindow_acquire(&nativeWindow);
+ conker::android::surfaceRegistry.publish(&nativeWindow,w,h);
+ conker::android::surfaceRegistry.setForeground(true);
+ conker::android::surfaceRetryAfter.store(0);
+}
 inline void check(bool condition,const char* label) { if(!condition)throw std::runtime_error(label);++checks; }
 }
 inline SDL_bool SDL_Vulkan_CreateSurface(SDL_Window*,VkInstance,VkSurfaceKHR* out) {*out=fixture::handle<VkSurfaceKHR>(2);return 1;}
 inline const char* SDL_GetError() {return "mock SDL";}
 inline void SDL_GetWindowSizeInPixels(SDL_Window* w,int* x,int* y) {*x=w->width;*y=w->height;}
+VKAPI_ATTR VkResult VKAPI_CALL vkQueueWaitIdle(VkQueue) {++fixture::driver.queueWaits;return VK_SUCCESS;}
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateAndroidSurfaceKHR(VkInstance,const VkAndroidSurfaceCreateInfoKHR* c,const VkAllocationCallbacks*,VkSurfaceKHR* out) {
+ fixture::check(c->window && c->window->refs>0,"missing owned native window");
+ auto& d=fixture::driver;*out=fixture::handle<VkSurfaceKHR>(2000+(++d.surfaceCreates));d.surfaces.insert(*out);return VK_SUCCESS;
+}
 VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceSupportKHR(VkPhysicalDevice,uint32_t,VkSurfaceKHR,VkBool32* out) {*out=VK_TRUE;return VK_SUCCESS;}
-VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice,VkSurfaceKHR,VkSurfaceCapabilitiesKHR* out) {*out=fixture::driver.caps;return fixture::driver.queryResult;}
+VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice,VkSurfaceKHR,VkSurfaceCapabilitiesKHR* out) {++fixture::driver.capQueries;*out=fixture::driver.caps;return fixture::driver.queryResult;}
 VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice,VkSurfaceKHR,uint32_t* count,VkSurfaceFormatKHR* data) {
  if(fixture::driver.queryResult!=VK_SUCCESS)return fixture::driver.queryResult;
  if(data)std::copy(fixture::driver.formats.begin(),fixture::driver.formats.end(),data);
@@ -57,7 +74,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice,const VkSwapchainCr
  *out=fixture::handle<VkSwapchainKHR>(100+d.creates);d.live.insert(*out);return VK_SUCCESS;
 }
 VKAPI_ATTR void VKAPI_CALL vkDestroySwapchainKHR(VkDevice,VkSwapchainKHR chain,const VkAllocationCallbacks*) {auto& d=fixture::driver;++d.destroys;if(!d.live.erase(chain))++d.badHandles;}
-VKAPI_ATTR void VKAPI_CALL vkDestroySurfaceKHR(VkInstance,VkSurfaceKHR,const VkAllocationCallbacks*) {}
+VKAPI_ATTR void VKAPI_CALL vkDestroySurfaceKHR(VkInstance,VkSurfaceKHR surface,const VkAllocationCallbacks*) {auto& d=fixture::driver;++d.surfaceDestroys;if(!d.surfaces.erase(surface))++d.badHandles;}
 VKAPI_ATTR VkResult VKAPI_CALL vkGetSwapchainImagesKHR(VkDevice,VkSwapchainKHR chain,uint32_t* count,VkImage* data) {
  auto& d=fixture::driver;if(!d.live.count(chain)){++d.badHandles;return VK_ERROR_SURFACE_LOST_KHR;}
  *count=d.last.minImageCount;
@@ -65,8 +82,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkGetSwapchainImagesKHR(VkDevice,VkSwapchainKHR c
  return VK_SUCCESS;
 }
 VKAPI_ATTR void VKAPI_CALL vkDestroyImageView(VkDevice,VkImageView,const VkAllocationCallbacks*) {}
-VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue,const VkPresentInfoKHR* info) {auto& d=fixture::driver;++d.presents;if(!d.live.count(*info->pSwapchains))++d.badHandles;return VK_SUCCESS;}
-VKAPI_ATTR VkResult VKAPI_CALL vkAcquireNextImageKHR(VkDevice,VkSwapchainKHR chain,uint64_t,VkSemaphore,VkFence,uint32_t* out) {auto& d=fixture::driver;++d.acquires;if(!d.live.count(chain))++d.badHandles;*out=0;return VK_SUCCESS;}
+VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue,const VkPresentInfoKHR* info) {auto& d=fixture::driver;++d.presents;if(!d.live.count(*info->pSwapchains))++d.badHandles;return d.presentResult;}
+VKAPI_ATTR VkResult VKAPI_CALL vkAcquireNextImageKHR(VkDevice,VkSwapchainKHR chain,uint64_t,VkSemaphore,VkFence,uint32_t* out) {auto& d=fixture::driver;++d.acquires;if(!d.live.count(chain))++d.badHandles;*out=0;return d.acquireResult;}
 VKAPI_ATTR VkResult VKAPI_CALL vkWaitForPresentKHR(VkDevice,VkSwapchainKHR,uint64_t,uint64_t) {return VK_SUCCESS;}
 VKAPI_ATTR VkResult VKAPI_CALL vkGetRefreshCycleDurationGOOGLE(VkDevice,VkSwapchainKHR,VkRefreshCycleDurationGOOGLE* out) {out->refreshDuration=16666667;return VK_SUCCESS;}
 namespace plume {

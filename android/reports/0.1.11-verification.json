@@ -1,0 +1,63 @@
+{
+  "version": "0.1.11-alpha",
+  "version_code": 12,
+  "base_android_commit": "f43516a409823b4e317d6a3ab95461e899b77729",
+  "pc_commit": "48e10dce99b9de6146b1d449d8fab538bbc7c55b",
+  "apk": {
+    "filename": "Conker-Recompiled-0.1.11-alpha-arm64.apk",
+    "bytes": 24674923,
+    "sha256": "fc89cacbae2259e4742d1c21563aa3279e7ab1603b06dae8960748952a58aae9",
+    "libraries": [
+      {
+        "name": "lib/arm64-v8a/libmain.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384
+        ]
+      },
+      {
+        "name": "lib/arm64-v8a/libSDL2.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384
+        ]
+      },
+      {
+        "name": "lib/arm64-v8a/libc++_shared.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384,
+          16384
+        ]
+      }
+    ],
+    "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+    "v2": true,
+    "v3": true,
+    "zip_alignment": 16384
+  },
+  "bounds_assertions": 160103,
+  "previous_bounds_regression_reproduced": true,
+  "gpu_material_reference": {
+    "driver": "Mesa lavapipe 24.0.5, software",
+    "full_RasterPS": true,
+    "cases": 336,
+    "checks": 774144,
+    "discrepancies": 0,
+    "unorm_tolerance": 0.00784313725490196,
+    "previous_sampler_discrepancies": 61952,
+    "gameplay": false,
+    "pc_comparison": "dual-source blending with the corrected sampler in both paths"
+  },
+  "resolution_coverage_assertions": 96016,
+  "configured_internal_height": 1080,
+  "device_gameplay_tested": false,
+  "sustained_60fps_measured": false,
+  "water_in_game_verified": false
+}

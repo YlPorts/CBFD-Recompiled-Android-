@@ -1,15 +1,20 @@
 cmake_minimum_required(VERSION 3.20)
 
 # Host application for the N64Recomp output of Conker's Bad Fur Day (US).
-# RecompiledFuncs/ must exist first (`sh recomp/run.sh`).
+# RecompiledFuncs/ must exist first (`python recomp/recompile.py`; build.cmd / build.sh run it).
 #
 # Windows (RT64 window, keyboard and controllers) with MSVC:
 #   host\build_windows.cmd   (sets up MSVC, then configures and builds host/build-win)
-# Linux/WSL (headless, null renderer):
+# Linux/WSL and macOS (Metal; use Apple's clang, /usr/bin/clang):
 #   cmake -S host -B host/build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo
 #   cmake --build host/build
 
 project(ConkerRecomp C CXX)
+if (APPLE)
+    # RT64 and RecompFrontend have Objective-C++ sources (Metal, Cocoa); rt64 enables
+    # the languages only in its own directory.
+    enable_language(OBJC OBJCXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -31,12 +36,12 @@ if (MSVC)
         PROPERTIES COMPILE_OPTIONS "/Od")
 endif()
 
-# The recompiled game code. recomp/run.sh records hashes of the files that shape it; stop if
+# The recompiled game code. recomp/recompile.py records hashes of the files that shape it; stop if
 # any has changed since, as the build would otherwise quietly use stale code.
-set(RECOMP_INPUTS conker.toml recomp/prepare_elf.py recomp/n64recomp.patch recomp/emit_tlb_pages.py recomp/audio_ucode.toml)
+set(RECOMP_INPUTS conker.toml recomp/conker.us.syms.toml recomp/code_rewrites.txt recomp/n64recomp.patch recomp/unpack_rom.py recomp/emit_tlb_pages.py recomp/audio_ucode.toml)
 set(RECOMP_STAMP "${REPO_ROOT}/RecompiledFuncs/inputs.sha256")
 if (NOT EXISTS "${RECOMP_STAMP}")
-    message(FATAL_ERROR "RecompiledFuncs/ is missing or predates input tracking: run `sh recomp/run.sh` (in WSL on Windows).")
+    message(FATAL_ERROR "RecompiledFuncs/ is missing or predates input tracking: run build.cmd / build.sh, or `python recomp/recompile.py`.")
 endif()
 file(READ "${RECOMP_STAMP}" RECOMP_STAMP_TEXT)
 set(RECOMP_EXPECTED "")
@@ -49,7 +54,7 @@ foreach(input ${RECOMP_INPUTS})
 endforeach()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${RECOMP_STAMP}")
 if (NOT RECOMP_STAMP_TEXT STREQUAL RECOMP_EXPECTED)
-    message(FATAL_ERROR "RecompiledFuncs/ is out of date (${RECOMP_INPUTS} changed since it was generated): run `sh recomp/run.sh` (in WSL on Windows), then build again.")
+    message(FATAL_ERROR "RecompiledFuncs/ is out of date (${RECOMP_INPUTS} changed since it was generated): run build.cmd / build.sh, or `python recomp/recompile.py`, then build again.")
 endif()
 file(GLOB RECOMPILED_FUNCS CONFIGURE_DEPENDS "${REPO_ROOT}/RecompiledFuncs/funcs_*.c")
 add_library(RecompiledFuncs STATIC ${RECOMPILED_FUNCS} "${REPO_ROOT}/RecompiledFuncs/tlb_pages.c")
@@ -79,8 +84,10 @@ add_executable(ConkerRecomp
     src/overlays.cpp
     src/ultra_extras.cpp
     src/mod_api.cpp
+    src/rom_versions.cpp
     src/widescreen.cpp
-    # The audio microcode, recompiled by RSPRecomp (recomp/audio_ucode.toml, run by recomp/run.sh).
+    src/interpolation.cpp
+    # The audio microcode, recompiled by RSPRecomp (recomp/audio_ucode.toml, run by recomp/recompile.py).
     "${REPO_ROOT}/RecompiledFuncs/rsp/audio_ucode.cpp"
 )
 if (MSVC)
@@ -97,9 +104,10 @@ if (CONKER_RT64)
     # RT64 only needs zstd's library. Its programs also copy man pages with a shell
     # command that breaks on a path with an apostrophe.
     set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
-    if (NOT WIN32)
-        # Outside Windows, RT64 renders with Vulkan into an SDL window (as in
+    if (NOT WIN32 AND NOT APPLE)
+        # On Linux, RT64 renders with Vulkan into an SDL window (as in
         # Banjo: Recompiled): the window is created with SDL_WINDOW_VULKAN.
+        # On macOS it renders with Metal into the window's CAMetalLayer.
         set(RT64_SDL_WINDOW_VULKAN ON CACHE BOOL "" FORCE)
         add_compile_definitions(PLUME_SDL_VULKAN_ENABLED RT64_SDL_WINDOW_VULKAN)
     endif()
@@ -122,10 +130,18 @@ if (CONKER_RT64)
     set(DXC_SPV_OPTS "-spirv" "-fspv-target-env=vulkan1.0" "-fvk-use-dx-layout")
     set(DXC_PS_OPTS "${DXC_COMMON_OPTS}" "-E" "PSMain" "-T ps_6_0" "-D DYNAMIC_RENDER_PARAMS")
     set(DXC_VS_OPTS "${DXC_COMMON_OPTS}" "-E" "VSMain" "-T vs_6_0" "-D DYNAMIC_RENDER_PARAMS" "-fvk-invert-y")
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+        set(DXC_ARCH x64)
+    else()
+        set(DXC_ARCH arm64)
+    endif()
     if (WIN32)
         set(DXC "${RT64_DIR}/src/contrib/dxc/bin/x64/dxc.exe")
+    elseif (APPLE)
+        # recompui's shaders also go through spirv_cross_msl (rt64's target) and xcrun metal.
+        set(DXC "DYLD_LIBRARY_PATH=${RT64_DIR}/src/contrib/dxc/lib/${DXC_ARCH}" "${RT64_DIR}/src/contrib/dxc/bin/${DXC_ARCH}/dxc-macos")
     else()
-        set(DXC "LD_LIBRARY_PATH=${RT64_DIR}/src/contrib/dxc/lib/x64" "${RT64_DIR}/src/contrib/dxc/bin/x64/dxc-linux")
+        set(DXC "LD_LIBRARY_PATH=${RT64_DIR}/src/contrib/dxc/lib/${DXC_ARCH}" "${RT64_DIR}/src/contrib/dxc/bin/${DXC_ARCH}/dxc-linux")
     endif()
     add_subdirectory("${REPO_ROOT}/tools/RecompFrontend" "${CMAKE_CURRENT_BINARY_DIR}/RecompFrontend")
     if (MSVC)

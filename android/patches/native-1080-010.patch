@@ -1,0 +1,223 @@
+--- a/tools/rt64/CMakeLists.txt
++++ b/tools/rt64/CMakeLists.txt
+@@ -587,3 +587,11 @@
+ build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecCoverageMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D MULTISAMPLING")
+ build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecCoverageFlat.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D VERTEX_FLAT_COLOR")
+ build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecCoverageFlatMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D VERTEX_FLAT_COLOR" "-D MULTISAMPLING")
++
++# Coverage-only output lets DXC eliminate RGB combiner/blender work.
++build_pixel_shader(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSDynamicAlphaOnly.hlsl" "-D DYNAMIC_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D SINGLE_SOURCE_ALPHA_ONLY")
++build_pixel_shader(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSDynamicAlphaOnlyMS.hlsl" "-D DYNAMIC_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D SINGLE_SOURCE_ALPHA_ONLY" "-D MULTISAMPLING")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecAlphaOnly.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D SINGLE_SOURCE_ALPHA_ONLY")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecAlphaOnlyMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D SINGLE_SOURCE_ALPHA_ONLY" "-D MULTISAMPLING")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecAlphaOnlyFlat.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D SINGLE_SOURCE_ALPHA_ONLY" "-D VERTEX_FLAT_COLOR")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecAlphaOnlyFlatMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D SINGLE_SOURCE_ALPHA_ONLY" "-D VERTEX_FLAT_COLOR" "-D MULTISAMPLING")
+--- a/tools/rt64/src/hle/rt64_present_queue.cpp
++++ b/tools/rt64/src/hle/rt64_present_queue.cpp
+@@ -345,6 +345,10 @@
+                 commandList->clearColor();
+ 
+                 if (renderParams.texture != nullptr) {
++#ifdef __ANDROID__
++                    conker::mobile::metrics.presentedSize.store((uint64_t(renderParams.textureWidth) << 32) |
++                        renderParams.textureHeight, std::memory_order_relaxed);
++#endif
+                     commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(renderParams.texture, RenderTextureLayout::SHADER_READ));
+                     viRenderer->render(renderParams);
+                 }
+--- a/tools/rt64/src/hle/rt64_workload_queue.cpp
++++ b/tools/rt64/src/hle/rt64_workload_queue.cpp
+@@ -5,6 +5,7 @@
+ #include "rt64_workload_queue.h"
+ #ifdef __ANDROID__
+ #include "mobile_metrics.hpp"
++#include "mobile_render_policy.hpp"
+ #endif
+ 
+ #include "common/rt64_thread.h"
+@@ -195,7 +196,11 @@
+ 
+             break;
+         case UserConfiguration::Resolution::Manual:
++#ifdef __ANDROID__
++            resolutionMultiplier = conker::mobile::resolution_scale(viFbSize[1]);
++#else
+             resolutionMultiplier = float(ext.sharedResources->userConfig.resolutionMultiplier);
++#endif
+             break;
+         case UserConfiguration::Resolution::Original:
+         default:
+@@ -203,6 +208,12 @@
+             break;
+         }
+ 
++#ifdef __ANDROID__
++        conker::mobile::metrics.verticalScaleMilli.store(uint32_t(resolutionMultiplier * 1000.0f), std::memory_order_relaxed);
++        conker::mobile::metrics.viSize.store((uint64_t(viFbSize[0]) << 32) | viFbSize[1], std::memory_order_relaxed);
++        conker::mobile::metrics.surfaceSize.store((uint64_t(ext.sharedResources->swapChainWidth) << 32) |
++            ext.sharedResources->swapChainHeight, std::memory_order_relaxed);
++#endif
+         uint32_t msaaSampleCount = ext.sharedResources->userConfig.msaaSampleCount();
+ 
+         // Build the resolution scale vector from the configuration.
+--- a/tools/rt64/src/render/rt64_framebuffer_renderer.cpp
++++ b/tools/rt64/src/render/rt64_framebuffer_renderer.cpp
+@@ -8,6 +8,7 @@
+ #endif
+ #ifdef __ANDROID__
+ #include "mobile_frame_coverage.hpp"
++#include "mobile_render_policy.hpp"
+ #include "mobile_metrics.hpp"
+ #endif
+ 
+@@ -594,10 +595,14 @@
+                     // With depth writes, interleave per primitive so even
+                     // overlapping/equal-depth triangles see the original order.
+                     const bool updatesDepth = otherMode.zUpd() && otherMode.cycleType() != G_CYC_COPY;
+-                    const uint32_t batch = updatesDepth ? 1 : triangles.faceCount;
+ #ifdef __ANDROID__
+-                    coverageDraws += updatesDepth ? triangles.faceCount : 1;
+-                    orderedTriangles += updatesDepth ? triangles.faceCount : 0;
++                    const uint32_t batch = conker::mobile::coverage_batch(triangles.faceCount,
++                        updatesDepth, otherMode.zCmp() || depthDecal);
++                    const bool ordered = batch == 1;
++                    coverageDraws += ordered ? triangles.faceCount : 1;
++                    orderedTriangles += ordered ? triangles.faceCount : 0;
++#else
++                    const uint32_t batch = updatesDepth ? 1 : std::max(triangles.faceCount, 1U);
+ #endif
+                     for (uint32_t face = 0; face < triangles.faceCount; face += batch) {
+                         const uint32_t count = std::min(batch, triangles.faceCount - face) * 3;
+--- a/tools/rt64/src/render/rt64_raster_shader.cpp
++++ b/tools/rt64/src/render/rt64_raster_shader.cpp
+@@ -15,6 +15,12 @@
+ #include "shaders/RasterPSSpecCoverageMS.hlsl.spirv.h"
+ #include "shaders/RasterPSSpecCoverageFlat.hlsl.spirv.h"
+ #include "shaders/RasterPSSpecCoverageFlatMS.hlsl.spirv.h"
++#include "shaders/RasterPSDynamicAlphaOnly.hlsl.spirv.h"
++#include "shaders/RasterPSDynamicAlphaOnlyMS.hlsl.spirv.h"
++#include "shaders/RasterPSSpecAlphaOnly.hlsl.spirv.h"
++#include "shaders/RasterPSSpecAlphaOnlyMS.hlsl.spirv.h"
++#include "shaders/RasterPSSpecAlphaOnlyFlat.hlsl.spirv.h"
++#include "shaders/RasterPSSpecAlphaOnlyFlatMS.hlsl.spirv.h"
+ 
+ 
+ #include "xxHash/xxh3.h"
+@@ -89,6 +95,10 @@
+         rasterPSCoverageMS.parse(RasterPSSpecCoverageMSBlobSPIRV, std::size(RasterPSSpecCoverageMSBlobSPIRV));
+         rasterPSCoverageFlat.parse(RasterPSSpecCoverageFlatBlobSPIRV, std::size(RasterPSSpecCoverageFlatBlobSPIRV));
+         rasterPSCoverageFlatMS.parse(RasterPSSpecCoverageFlatMSBlobSPIRV, std::size(RasterPSSpecCoverageFlatMSBlobSPIRV));
++        rasterPSAlphaOnly.parse(RasterPSSpecAlphaOnlyBlobSPIRV, std::size(RasterPSSpecAlphaOnlyBlobSPIRV));
++        rasterPSAlphaOnlyMS.parse(RasterPSSpecAlphaOnlyMSBlobSPIRV, std::size(RasterPSSpecAlphaOnlyMSBlobSPIRV));
++        rasterPSAlphaOnlyFlat.parse(RasterPSSpecAlphaOnlyFlatBlobSPIRV, std::size(RasterPSSpecAlphaOnlyFlatBlobSPIRV));
++        rasterPSAlphaOnlyFlatMS.parse(RasterPSSpecAlphaOnlyFlatMSBlobSPIRV, std::size(RasterPSSpecAlphaOnlyFlatMSBlobSPIRV));
+ 
+         rasterVS.parse(RasterVSSpecConstantBlobSPIRV, std::size(RasterVSSpecConstantBlobSPIRV));
+         rasterVSFlat.parse(RasterVSSpecConstantFlatBlobSPIRV, std::size(RasterVSSpecConstantFlatBlobSPIRV));
+@@ -116,6 +126,10 @@
+         
+         const bool singleSource = !device->getCapabilities().dualSourceBlend;
+         const bool useMSAA = (multisampling.sampleCount > 1);
++        const bool alphaBlend = desc.otherMode.cycleType() != G_CYC_COPY && interop::Blender::usesAlphaBlend(desc.otherMode);
++        const bool splitColor = singleSource && alphaBlend;
++        const bool preserveCoverage = desc.otherMode.cvgDst() == CVG_DST_SAVE;
++        const bool colorOnly = splitColor && preserveCoverage;
+         std::unique_ptr<RenderShader> colorShader;
+         std::unique_ptr<RenderShader> vertexShader;
+         std::unique_ptr<RenderShader> pixelShader;
+@@ -147,6 +161,12 @@
+                 }
+             }
+ 
++            if (splitColor && !preserveCoverage) {
++                PS = desc.flags.smoothShade ?
++                    (useMSAA ? &optimizerCacheSPIRV->rasterPSAlphaOnlyMS : &optimizerCacheSPIRV->rasterPSAlphaOnly) :
++                    (useMSAA ? &optimizerCacheSPIRV->rasterPSAlphaOnlyFlatMS : &optimizerCacheSPIRV->rasterPSAlphaOnlyFlat);
++            }
++
+             thread_local std::vector<respv::SpecConstant> specConstants;
+             thread_local bool specConstantsSetup = false;
+             thread_local std::vector<uint8_t> optimizedVS;
+@@ -166,12 +186,12 @@
+             specConstants[4].values[0] = desc.flags.value;
+             
+             bool vsRun = respv::Optimizer::run(*VS, specConstants.data(), uint32_t(specConstants.size()), optimizedVS);
+-            bool psRun = respv::Optimizer::run(*PS, specConstants.data(), uint32_t(specConstants.size()), optimizedPS);
++            bool psRun = colorOnly || respv::Optimizer::run(*PS, specConstants.data(), uint32_t(specConstants.size()), optimizedPS);
+             assert(vsRun && psRun && "Shader optimization must always succeed as the inputs are always the same.");
+ 
+             vertexShader = device->createShader(optimizedVS.data(), optimizedVS.size(), "VSMain", shaderFormat);
+-            pixelShader = device->createShader(optimizedPS.data(), optimizedPS.size(), "PSMain", shaderFormat);
+-            if (singleSource) {
++            if (!colorOnly) pixelShader = device->createShader(optimizedPS.data(), optimizedPS.size(), "PSMain", shaderFormat);
++            if (splitColor) {
+                 thread_local std::vector<uint8_t> optimizedColor;
+                 if (!respv::Optimizer::run(*colorPS, specConstants.data(), uint32_t(specConstants.size()), optimizedColor)) {
+                     throw std::runtime_error("Single-source color shader optimization failed");
+@@ -267,7 +287,7 @@
+         creation.pipelineLayout = pipelineLayout;
+         creation.vertexShader = vertexShader.get();
+         creation.pixelShader = pixelShader.get();
+-        creation.alphaBlend = !copyMode && interop::Blender::usesAlphaBlend(desc.otherMode);
++        creation.alphaBlend = alphaBlend;
+         creation.culling = !copyMode && desc.flags.culling;
+         creation.zCmp = !copyMode && desc.otherMode.zCmp() && (desc.otherMode.zMode() != ZMODE_DEC);
+         creation.zUpd = !copyMode && desc.otherMode.zUpd();
+@@ -279,7 +299,6 @@
+ #endif
+         creation.multisampling = multisampling;
+         if (singleSource && creation.alphaBlend) {
+-            const bool preserveCoverage = desc.otherMode.cvgDst() == CVG_DST_SAVE;
+             creation.singleSourcePass = preserveCoverage ? 3 : 1;
+             creation.pixelShader = colorShader.get();
+             pipeline = createPipeline(creation);
+@@ -511,6 +530,9 @@
+             const auto *colorBlob = useMSAA ? RasterPSDynamicColorMSBlobSPIRV : RasterPSDynamicColorBlobSPIRV;
+             const size_t colorSize = useMSAA ? std::size(RasterPSDynamicColorMSBlobSPIRV) : std::size(RasterPSDynamicColorBlobSPIRV);
+             singleColorShader = device->createShader(colorBlob, colorSize, "PSMain", shaderFormat);
++            const auto *alphaBlob = useMSAA ? RasterPSDynamicAlphaOnlyMSBlobSPIRV : RasterPSDynamicAlphaOnlyBlobSPIRV;
++            const size_t alphaSize = useMSAA ? std::size(RasterPSDynamicAlphaOnlyMSBlobSPIRV) : std::size(RasterPSDynamicAlphaOnlyBlobSPIRV);
++            singleAlphaShader = device->createShader(alphaBlob, alphaSize, "PSMain", shaderFormat);
+             fprintf(stderr, "[blend] Native dual source unavailable: exact single-source RGB/coverage passes enabled\n");
+         }
+ 
+@@ -563,7 +585,7 @@
+                 pipelineThreadCreations[threadIndex].emplace_back(split);
+                 split.singleSourcePass = 2;
+                 split.alphaBlend = false;
+-                split.pixelShader = pixelShader.get();
++                split.pixelShader = singleAlphaShader.get();
+                 pipelineThreadCreations[threadIndex].emplace_back(split);
+             }
+             threadIndex = (threadIndex + 1) % pipelineThreadCreations.size();
+--- a/tools/rt64/src/render/rt64_raster_shader.h
++++ b/tools/rt64/src/render/rt64_raster_shader.h
+@@ -25,6 +25,7 @@
+ 
+ namespace RT64 {
+     struct OptimizerCacheSPIRV {
++        respv::Shader rasterPSAlphaOnly, rasterPSAlphaOnlyMS, rasterPSAlphaOnlyFlat, rasterPSAlphaOnlyFlatMS;
+         respv::Shader rasterVS;
+         respv::Shader rasterVSFlat;
+         respv::Shader rasterPS;
+@@ -107,6 +108,7 @@
+         std::unique_ptr<RenderShader> vertexShader;
+         std::unique_ptr<RenderShader> pixelShader;
+         std::unique_ptr<RenderShader> singleColorShader;
++        std::unique_ptr<RenderShader> singleAlphaShader;
+ 
+         RasterShaderUber(RenderDevice *device, RenderShaderFormat shaderFormat, const RenderMultisampling &multisampling, const ShaderLibrary *shaderLibrary, uint32_t threadCount);
+         ~RasterShaderUber();
+--- a/tools/rt64/src/shaders/RasterPS.hlsl
++++ b/tools/rt64/src/shaders/RasterPS.hlsl
+@@ -313,6 +313,10 @@
+     // RGB pass: output the ORIGINAL blending factor, not N64 coverage. Alpha
+     // writes are disabled. A separate coverage-only pass preserves coverage.
+     pixelColor = float4(resultColor.rgb, resultAlpha.a);
++#elif defined(SINGLE_SOURCE_ALPHA_ONLY)
++    // Alpha-only pipeline: expose the write mask to compiler dead-code removal.
++    // Keep the same discard decisions and coverage as the desktop shader.
++    pixelColor = float4(0.0f, 0.0f, 0.0f, resultColor.a);
+ #else
+     pixelColor = resultColor;
+ #endif

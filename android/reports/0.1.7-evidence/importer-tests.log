@@ -1,0 +1,44 @@
+PASS order=0 fragmented=1
+PASS order=0 fragmented=2
+PASS order=0 fragmented=3
+PASS order=0 fragmented=5
+PASS order=0 fragmented=65535
+PASS order=0 fragmented=65536
+PASS order=0 zero-length reads
+PASS order=1 fragmented=1
+PASS order=1 fragmented=2
+PASS order=1 fragmented=3
+PASS order=1 fragmented=5
+PASS order=1 fragmented=65535
+PASS order=1 fragmented=65536
+PASS order=1 zero-length reads
+PASS order=2 fragmented=1
+PASS order=2 fragmented=2
+PASS order=2 fragmented=3
+PASS order=2 fragmented=5
+PASS order=2 fragmented=65535
+PASS order=2 fragmented=65536
+PASS order=2 zero-length reads
+PASS empty input rejected
+PASS partial magic rejected
+PASS partial final word rejected
+PASS ZIP/unknown magic rejected
+PASS oversized stream rejected
+PASS cancellation rejected
+PASS canonical import committed
+PASS valid replacement canonicalizes v64
+PASS invalid replacement preserves previous ROM
+PASS word-aligned truncated file rejected
+PASS provider I/O failure cleaned up
+PASS ZIP import byte order=0
+PASS ZIP import byte order=1
+PASS ZIP import byte order=2
+PASS ZIP ignores extra text and never extracts paths
+PASS ZIP multiple ROMs rejected without losing previous
+PASS ZIP missing ROM rejected
+PASS ZIP corrupted CRC rejected
+PASS ZIP wrong ROM size rejected
+PASS ZIP truncated body rejected
+PASS null stream rejected
+Passed 42 synthetic tests. This is not a native runtime or FPS test.
+Android XML is well formed. Full Android/native compilation is a separate gate.

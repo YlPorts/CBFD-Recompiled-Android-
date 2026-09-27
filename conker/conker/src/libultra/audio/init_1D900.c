@@ -33,18 +33,21 @@ s32 func_1001D9B0( s16 arg0) {
     }
 }
 
-// this is not right.
-#pragma GLOBAL_ASM("asm/nonmatchings/libultra/audio/init_1D900/func_1001DA28.s")
-// s32 func_1001DA28(s16 arg0) {
-//     N_ALMainBus *sp4;
-//
-//     sp4 = n_syn->mainBus;
-//     if (sp4->filter.handler == func_1001E530) {
-//         return n_syn->auxBus[arg0].sources;
-//     } else {
-//         return 0;
-//     }
-// }
+// Returns the last effect slot (fx_array[7]) of auxiliary bus `bus`, or NULL when the
+// main bus's filter isn't func_1001E530 (the handler n_alSynNew installs on it; see
+// n_synthesizer.c), i.e. before the synthesizer is set up that way. A sibling of
+// func_1001D9B0, which returns the same bus's sources. What the game keeps in that last
+// slot isn't identified yet. Compiled unoptimised (-g), hence the explicit else.
+ALFx *func_1001DA28(s16 bus) {
+    N_ALMainBus *mainBus;
+
+    mainBus = n_syn->mainBus;
+    if (mainBus->filter.handler == func_1001E530) {
+        return n_syn->auxBus[bus].fx_array[7];
+    } else {
+        return NULL;
+    }
+}
 
 void func_1001DAA0(arg0, arg1, arg2)
     s32 arg0;
