@@ -128,7 +128,7 @@ def apply_018():
         raise
     print('0.1.8 capability-based blend, retained Android surface and queue-wakeup layer applied.')
 
-def main():
+def apply_010():
     patch = ROOT / 'android/patches/native-1080-010.patch'
     def check(reverse=False):
         return subprocess.run(['git','apply',*(['--reverse'] if reverse else []),'--check',str(patch)],
@@ -146,6 +146,25 @@ def main():
             subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
         raise
     print('0.1.10 VI-aware 1080-line render and lean coverage shaders applied.')
+
+def main():
+    patch = ROOT / 'android/patches/visual-bounds-textures-011.patch'
+    def check(reverse=False):
+        return subprocess.run(['git','apply',*(['--reverse'] if reverse else []),'--check',str(patch)],
+            cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode == 0
+    removed = check(True)
+    if removed:
+        subprocess.run(['git','apply','--reverse',str(patch)],cwd=ROOT,check=True)
+    try:
+        apply_010()
+        if not check():
+            raise SystemExit('0.1.11 dependencies differ; refusing to overwrite local changes.')
+        subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+    except BaseException:
+        if removed and check():
+            subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+        raise
+    print('0.1.11 wide framebuffer bounds and finite texture LOD layer applied.')
 
 if __name__ == '__main__':
     main()

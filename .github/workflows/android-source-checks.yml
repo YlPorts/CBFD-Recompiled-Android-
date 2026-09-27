@@ -84,6 +84,7 @@ jobs:
         run: |
           python3 android/tools/test_pc_sync.py
           python3 android/tools/test_render_010.py
+          python3 android/tools/test_render_011.py
           python3 android/tools/test_mobile.py
           python3 android/tools/test_matcher_math.py
           python3 android/tools/test_native_render_017.py
@@ -96,3 +97,4 @@ jobs:
           git -C tools/rt64 submodule update --init src/contrib/dxc
           git -C tools/rt64/src/contrib/plume submodule update --init contrib/volk contrib/VulkanMemoryAllocator
           VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu018.py
+          VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu011.py
