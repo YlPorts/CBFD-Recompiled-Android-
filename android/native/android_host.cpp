@@ -208,7 +208,7 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         dup2(fileno(stderr), STDOUT_FILENO);
         setvbuf(stdout, nullptr, _IOLBF, 0);
         std::ofstream(state / "running.marker") << "Conker Android 0.1.15-alpha\n";
-        std::fprintf(stderr, "[startup] Conker Android 0.1.14-alpha ARM64; build=mali-blend-015; renderer=%s; displayTarget=60; aspect=Expand; internalHeight=1080; noDRS\n", conker::mobile::renderer_name());
+        std::fprintf(stderr, "[startup] Conker Android 0.1.15-alpha ARM64; build=mali-blend-015; renderer=%s; displayTarget=60; aspect=Expand; internalHeight=1080; noDRS\n", conker::mobile::renderer_name());
         // Validate storage on SDL_main before spawning RT64's graphics thread.
         // This uses --data from Android getFilesDir(), never HOME or /data.
         const auto renderer_path = conker::android::rt64_data_path(state);
