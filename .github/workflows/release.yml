@@ -10,7 +10,7 @@
 #   3. In this repository's Settings > Secrets and variables > Actions, add the secrets
 #      ROM_REPO (owner/name of the private repository) and ROM_REPO_TOKEN (the token).
 #
-# A pushed tag like v0.2.0 builds the packages into a draft release, which is published
+# A pushed tag like V0.2.0 builds the packages into a draft release, which is published
 # once all of them have built. Run by hand from the Actions tab, it makes a draft "Test build"
 # release instead (drafts are only visible to the repository's collaborators). It has no
 # pull request trigger, so the ROM token is never exposed to code from forks.
@@ -21,7 +21,7 @@ name: release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', 'V*']
   workflow_dispatch:
 
 permissions:
@@ -41,6 +41,25 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
+      # The launcher shows the version in host/src/main.cpp and mods are checked against it,
+      # so a release whose tag says otherwise would ship a build that misreports itself.
+      - name: Check the tag matches the version in the source
+        if: github.ref_type == 'tag'
+        run: |
+          git clone -q --depth 1 --branch "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY" src
+          # recomp::Version{ 0, 1, 1 } is 0.1.1, and a suffix is appended as written:
+          # recomp::Version{ 0, 2, 0, "-rc1" } is 0.2.0-rc1.
+          version=$(sed -nE 's/.*project_version = recomp::Version\{ *([0-9]+), *([0-9]+), *([0-9]+)(, *"([^"]*)")? *\}.*/\1.\2.\3\5/p' src/host/src/main.cpp)
+          if [ -z "$version" ]; then
+            echo "::error::couldn't find project_version in host/src/main.cpp"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_NAME#[vV]}" != "$version" ]; then
+            echo "::error::the tag $GITHUB_REF_NAME doesn't match version $version in host/src/main.cpp: update one of them, and tag again"
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches version $version"
+
       - name: Create the draft release
         id: tag
         run: |

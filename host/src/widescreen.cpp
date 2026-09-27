@@ -9,10 +9,17 @@
 // coordinates, in the same display list space as the game's own rectangle.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 
+#include <SDL.h>
+
 #include "recomp.h"
+#include "ultramodern/config.hpp"
+
+// The game window (frontend.cpp).
+extern SDL_Window* window;
 
 namespace {
     // How far past each 4:3 edge sprites are kept, in N64 screen pixels: enough
@@ -33,6 +40,33 @@ namespace {
         float value;
         std::memcpy(&value, &word, sizeof(value));
         return value;
+    }
+
+    float read_float(uint8_t* rdram, gpr base, int32_t offset) {
+        uint32_t word = (uint32_t)MEM_W(offset, base);
+        float value;
+        std::memcpy(&value, &word, sizeof(value));
+        return value;
+    }
+
+    void write_float(uint8_t* rdram, gpr base, int32_t offset, float value) {
+        uint32_t word;
+        std::memcpy(&word, &value, sizeof(word));
+        MEM_W(offset, base) = (int32_t)word;
+    }
+
+    // How much wider than the game's 4:3 the window shows: RT64 widens the 3D
+    // view to the window's aspect ratio unless the aspect ratio is set to Original.
+    float widescreen_ratio() {
+        if (ultramodern::renderer::get_graphics_config().ar_option == ultramodern::renderer::AspectRatio::Original || window == nullptr) {
+            return 1.0f;
+        }
+        int width = 0, height = 0;
+        SDL_GetWindowSize(window, &width, &height);
+        if (width <= 0 || height <= 0) {
+            return 1.0f;
+        }
+        return std::max(1.0f, (float)width / (float)height / (4.0f / 3.0f));
     }
 
     void put_command(uint8_t* rdram, gpr& dl, uint32_t w0, uint32_t w1) {
@@ -335,4 +369,45 @@ extern "C" void conker_iris_end(uint8_t* rdram, recomp_context* ctx) {
     // The game's first command branches to ours; the rest of its wipe is skipped.
     gpr game_dl = start;
     put_command(rdram, game_dl, g_dl_branch, wide_dl);
+}
+
+// func_1501B22C builds a camera's frustum from its fields of view: the view-space
+// normals of its four side planes, which the game culls the world and its objects
+// against. RT64 widens the picture, but those planes still hold the 4:3 view, so
+// the level's pieces past the 4:3 edges weren't drawn (holes at the sides, and
+// geometry popping in and out as the camera turned). At its return ($s0 is the
+// camera), rebuild the left and right planes from the horizontal field of view
+// as wide as the window shows it: tan(half angle) grows with the aspect ratio.
+extern "C" void conker_widen_frustum(uint8_t* rdram, recomp_context* ctx) {
+    const float ratio = widescreen_ratio();
+    if (ratio <= 1.0f) {
+        return;
+    }
+    const gpr camera = ctx->r16;
+    constexpr float degrees_to_radians = 3.14159265358979f / 180.0f;
+    const float half_x = read_float(rdram, camera, 0x74) * 0.5f * degrees_to_radians;
+    const float wide_half_x = std::atan(std::tan(half_x) * ratio);
+    const float c = std::cos(wide_half_x);
+    const float s = std::sin(wide_half_x);
+    // Left (cos, 0, -sin) and right (-cos, 0, -sin), as the game writes them.
+    write_float(rdram, camera, 0x88, c);
+    write_float(rdram, camera, 0x8C, 0.0f);
+    write_float(rdram, camera, 0x90, -s);
+    write_float(rdram, camera, 0x94, -c);
+    write_float(rdram, camera, 0x98, 0.0f);
+    write_float(rdram, camera, 0x9C, -s);
+}
+
+// updateCullScales_1510B958 sets the scale that the game's other culls (the level's
+// pieces among them: func_150A5378, func_150A6210, func_1510AEE0) multiply a
+// view-space x by before comparing it with the depth: a point is kept while
+// |x| * scale <= depth, the 4:3 view. At its return, divide it by how much wider
+// the window is, so they keep what the widened view shows.
+extern "C" void conker_widen_cull_scale(uint8_t* rdram, recomp_context* ctx) {
+    const float ratio = widescreen_ratio();
+    if (ratio <= 1.0f) {
+        return;
+    }
+    const gpr cull_scale_x = (gpr)(int32_t)0x800D35E0; // cullScaleX_800D35E0
+    write_float(rdram, cull_scale_x, 0, read_float(rdram, cull_scale_x, 0) / ratio);
 }

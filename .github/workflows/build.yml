@@ -1,0 +1,120 @@
+# Builds the game on Windows, Linux and macOS for every push, so a change that breaks one
+# of them is found when it's pushed rather than when a release is tagged. Nothing is
+# packaged or kept: release.yml makes the packages.
+#
+# It needs the ROM the same way release.yml does, from the ROM_REPO and ROM_REPO_TOKEN
+# secrets (see the setup there). Where they aren't set, as in a fork, the builds are
+# skipped rather than failed. It has no pull request trigger, so the ROM token is never
+# exposed to code from forks.
+#
+# Like release.yml, it uses no third-party actions: git and the GitHub CLI only.
+name: build
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GIT_TERMINAL_PROMPT: '0'
+
+jobs:
+  rom:
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - name: Check the ROM secrets are set
+        id: check
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: |
+          if [ -n "$ROM_REPO" ] && [ -n "$ROM_REPO_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::ROM_REPO and ROM_REPO_TOKEN aren't set, so the builds are skipped (see release.yml)."
+          fi
+
+  windows:
+    needs: rom
+    if: needs.rom.outputs.available == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        shell: bash
+        run: |
+          git clone -q --no-checkout "https://github.com/$GITHUB_REPOSITORY" .
+          git checkout -q "$GITHUB_SHA"
+
+      - name: Get the ROM
+        shell: bash
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: git clone -q --depth 1 "https://x-access-token:$ROM_REPO_TOKEN@github.com/$ROM_REPO.git" rom-src
+
+      - name: Build
+        shell: cmd
+        run: build.cmd rom-src\baserom.us.z64
+
+  linux:
+    needs: rom
+    if: needs.rom.outputs.available == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        run: |
+          git clone -q --no-checkout "https://github.com/$GITHUB_REPOSITORY" .
+          git checkout -q "$GITHUB_SHA"
+
+      - name: Get the ROM
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: git clone -q --depth 1 "https://x-access-token:$ROM_REPO_TOKEN@github.com/$ROM_REPO.git" rom-src
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 cmake ninja-build clang pkg-config libsdl2-dev libgtk-3-dev libfreetype-dev
+
+      - name: Build
+        run: ./build.sh rom-src/baserom.us.z64 < /dev/null
+
+  macos:
+    needs: rom
+    if: needs.rom.outputs.available == 'true'
+    # The same runner as release.yml, so a build that passes here builds there too.
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        run: |
+          git clone -q --no-checkout "https://github.com/$GITHUB_REPOSITORY" .
+          git checkout -q "$GITHUB_SHA"
+
+      - name: Get the ROM
+        env:
+          ROM_REPO: ${{ secrets.ROM_REPO }}
+          ROM_REPO_TOKEN: ${{ secrets.ROM_REPO_TOKEN }}
+        run: git clone -q --depth 1 "https://x-access-token:$ROM_REPO_TOKEN@github.com/$ROM_REPO.git" rom-src
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja pkg-config sdl2 freetype dylibbundler
+          # Xcode 26 and later download the Metal compiler separately.
+          xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
+
+      - name: Build
+        run: ./build.sh rom-src/baserom.us.z64 < /dev/null

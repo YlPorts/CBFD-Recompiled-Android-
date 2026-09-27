@@ -13,7 +13,7 @@ public final class TouchLayoutTest {
             for(TouchLayout.Button b:t.buttons) {
                 check(b.x-b.rx>20&&b.x+b.rx<size[0]-10&&b.y-b.ry>0&&b.y+b.ry<size[1],"safe bounds "+b.index);
                 press(t,b.index,30);
-                check(t.mask==(b.index<TouchLayout.CU?TouchLayout.BITS[b.index]:0),"isolated button / analog camera "+b.index);
+                check(t.mask==TouchLayout.BITS[b.index],"isolated N64 input "+b.index);
                 if(b.index>=TouchLayout.CU)check(Math.hypot(t.cameraAxisX,t.cameraAxisY)>.2,"camera direction is analog");
                 t.up(30);
             }
@@ -39,10 +39,10 @@ public final class TouchLayoutTest {
         t.resize(1280,720,2f,0,0,0,0);check(t.mask==0&&t.axisX==0&&t.pointerCount()==0,"resize cancels ownership");
         t.down(12,t.cameraX,t.cameraY);check(t.mask==0,"camera deadzone");
         t.move(12,t.cameraX+t.cameraRadius,t.cameraY-t.cameraRadius);
-        check(t.mask==0 && t.cameraAxisX>0 && t.cameraAxisY>0,"diagonal analog camera sends NO C bits");
+        check(t.mask==(TouchLayout.BITS[TouchLayout.CU]|TouchLayout.BITS[TouchLayout.CR]) && t.cameraAxisX>0 && t.cameraAxisY>0,"diagonal right stick maps to C-up/right");
         check(Math.abs(Math.hypot(t.cameraAxisX,t.cameraAxisY)-1)<.001,"camera axis clamped");
         t.down(13,t.baseX,t.baseY);t.move(13,t.baseX+t.stickRadius,t.baseY);
-        press(t,TouchLayout.A,14);check(t.mask==0x8000&&t.axisX>.99,"two sticks plus A");
+        press(t,TouchLayout.A,14);check(t.mask==(0x8000|TouchLayout.BITS[TouchLayout.CU]|TouchLayout.BITS[TouchLayout.CR])&&t.axisX>.99,"two sticks plus A");
         t.up(12);check(t.mask==0x8000&&t.axisX>.99&&t.cameraAxisX==0,"camera release independent");
         t.release();
         t.down(12,t.cameraX,t.cameraY);t.down(13,t.cameraX+t.cameraRadius,t.cameraY);
@@ -55,7 +55,7 @@ public final class TouchLayoutTest {
             check(t.mask==TouchLayout.BITS[small],"shoulder touch halo "+small);t.release();
         }
         t.down(301,t.cameraX+t.cameraRadius+8*t.unit,t.cameraY);
-        check(t.mask==0 && t.cameraAxisX>.99,"analog camera extended hit area");t.release();
+        check(t.mask==TouchLayout.BITS[TouchLayout.CR] && t.cameraAxisX>.99,"right stick extended hit area");t.release();
         t.down(301,t.cameraX,t.cameraY);t.move(301,Float.NaN,Float.POSITIVE_INFINITY);
         check(t.cameraAxisX==0&&t.cameraAxisY==0,"camera ignores invalid motion");t.release();
         t.down(909,t.cameraX,t.cameraY);
@@ -63,10 +63,10 @@ public final class TouchLayoutTest {
         check(t.cameraAxisX>.01f && t.cameraAxisX<.1f && t.mask==0,"slow analog motion is not a digital C press");
         float slow=t.cameraAxisX;
         t.move(909,t.cameraX+t.cameraRadius*.5f,t.cameraY);
-        check(t.cameraAxisX>slow && t.cameraAxisX<.5f,"continuous camera deflection");
-        press(t,TouchLayout.B,911);check(t.mask==0x4000 && t.cameraAxisX>0,"camera plus B");
-        t.up(911);check(t.mask==0 && t.cameraAxisX>0,"button lift keeps analog camera");
-        t.release();check(t.cameraAxisX==0 && t.cameraAxisY==0,"cancel releases native camera axes");
+        check(t.cameraAxisX>slow && t.cameraAxisX<.5f && t.mask==TouchLayout.BITS[TouchLayout.CR],"C-right crosses digital threshold");
+        press(t,TouchLayout.B,911);check(t.mask==(0x4000|TouchLayout.BITS[TouchLayout.CR]) && t.cameraAxisX>0,"C-right plus B");
+        t.up(911);check(t.mask==TouchLayout.BITS[TouchLayout.CR] && t.cameraAxisX>0,"button lift keeps C-right");
+        t.release();check(t.cameraAxisX==0 && t.cameraAxisY==0 && t.mask==0,"cancel releases C-stick mapping");
         System.out.println("PASS "+checks+" touch layout/ownership checks");
     }
 }

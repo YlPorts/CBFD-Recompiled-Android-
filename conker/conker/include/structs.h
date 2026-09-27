@@ -2965,10 +2965,15 @@ typedef struct {
     u8 unkC;
 } struct258;
 
+// A camera, as stored in the D_800BE628 array (0x180 bytes each).
 typedef struct {
-    u8  unk0[0x74];
-    f32 unk74;
-    f32 unk78;
+    u8  unk0[0x64];
+    f32 baseCullScaleX; // cullScales_800D35E0's x at the base field of view
+    f32 baseCullScaleY; // and y
+    f32 baseFovX;       // base horizontal field of view, degrees
+    f32 baseFovY;       // base vertical field of view, degrees
+    f32 fovX;           // horizontal field of view in use (func_1510B128)
+    f32 fovY;           // vertical field of view in use
     u8  unk7C[0xC];
     f32 unk88;
     f32 unk8C;

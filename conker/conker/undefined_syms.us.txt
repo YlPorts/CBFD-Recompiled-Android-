@@ -60,3 +60,4 @@ random_float = 0x150ADA68;
 gCurrentObject = 0x800D154C;
 gCurrentObjectIndex = 0x800C3E78;
 gObjects = 0x800CC2D0;
+cullScaleY_800D35E4 = 0x800D35E4;

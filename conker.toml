@@ -327,6 +327,21 @@ func = "func_15130A9C"
 before_vram = 0x15130DA0
 text = "{ extern void conker_enable_extended_gbi(uint8_t*, recomp_context*); conker_enable_extended_gbi(rdram, ctx); }"
 
+# Widescreen: the camera's frustum, which the world and its objects are culled
+# against, is built for the 4:3 view. Widen its left and right planes to the
+# window (host/src/widescreen.cpp). $s0 is the camera until the return.
+[[patches.hook]]
+func = "func_1501B22C"
+before_vram = 0x1501B308
+text = "{ extern void conker_widen_frustum(uint8_t*, recomp_context*); conker_widen_frustum(rdram, ctx); }"
+
+# Widescreen: the scale the level's culls compare view-space x with is set for
+# the 4:3 view too. Widen it to the window (host/src/widescreen.cpp).
+[[patches.hook]]
+func = "updateCullScales_1510B958"
+before_vram = 0x1510B9C8
+text = "{ extern void conker_widen_cull_scale(uint8_t*, recomp_context*); conker_widen_cull_scale(rdram, ctx); }"
+
 # Widescreen: the pause menu's blurred background, a saved copy of the 4:3 frame
 # drawn as tiles, is stretched over the whole width (host/src/widescreen.cpp).
 [[patches.hook]]

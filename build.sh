@@ -149,6 +149,18 @@ for tool in tools/N64Recomp tools/N64ModernRuntime tools/rt64; do
         fi
     fi
 done
+# RmlUi is patched too, and is RecompFrontend's submodule, so it moves when either does.
+RMLUI=tools/RecompFrontend/recompui/lib/RmlUi
+if [ -e "$RMLUI/.git" ]; then
+    want=$(git ls-tree HEAD tools/RecompFrontend | awk '{print $3}')
+    want_rmlui=$(git -C tools/RecompFrontend/recompui/lib ls-tree HEAD RmlUi | awk '{print $3}')
+    if [ "$want" != "$(git -C tools/RecompFrontend rev-parse HEAD)" ] ||
+       [ "$want_rmlui" != "$(git -C "$RMLUI" rev-parse HEAD)" ]; then
+        echo "  $RMLUI moved to another commit: resetting it (its patch is applied again below)."
+        git -C "$RMLUI" reset --hard -q
+        git -C "$RMLUI" clean -fdq
+    fi
+fi
 git submodule update --init --recursive
 
 # Applies a patch unless it's already applied. If the tool holds an older version of
@@ -170,6 +182,10 @@ step "Patching the tools"
 apply_patch tools/N64Recomp recomp/n64recomp.patch
 apply_patch tools/N64ModernRuntime recomp/n64modernruntime.patch
 apply_patch tools/rt64 recomp/rt64.patch
+# RmlUi's fix for GCC 15 and later (RmlUi #766), which isn't in the RmlUi that RecompFrontend
+# uses: its robin_hood.h uses uint64_t without including <cstdint>. Unneeded, and skipped as
+# already applied, once RecompFrontend uses RmlUi 6.2 or later.
+apply_patch "$RMLUI" recomp/rmlui.patch
 
 step "Building the recompiler"
 if [ ! -f tools/N64Recomp/build/build.ninja ]; then

@@ -109,8 +109,12 @@ final class TouchLayout {
                 if(length>.20f) {
                     float scale=Math.min(1f,(length-.20f)/.80f)/length;
                     cameraAxisX=x*scale;cameraAxisY=y*scale;
-                    // These two analog axes go through their own JNI snapshot.
-                    // Do not inject C bits: the native game-camera hook owns orbit. 
+                    // Direct PC/original behavior: the right stick is a convenient
+                    // four-way mapping to the N64 C-buttons.
+                    if(cameraAxisX < -0.35f) mask |= BITS[CL];
+                    if(cameraAxisX >  0.35f) mask |= BITS[CR];
+                    if(cameraAxisY >  0.35f) mask |= BITS[CU];
+                    if(cameraAxisY < -0.35f) mask |= BITS[CD];
                 }
             } else if(p.button>=0) mask|=BITS[p.button];
         }

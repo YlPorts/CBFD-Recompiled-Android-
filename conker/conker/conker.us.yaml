@@ -601,7 +601,7 @@ segments:
       - [0x1368c0, asm]
       - [0x137de0, asm]
       - [0x137ed0, asm]
-      - [0x138520, asm]
+      - [0x138520, c, game_138520]
       - [0x139fc0, asm]
       - [0x13ae20, asm]
       - [0x13bb20, asm]

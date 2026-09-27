@@ -1101,7 +1101,7 @@ f32  func_150ADA68();
 void func_150E2EA4(void *arg0, u8 arg1, s16 arg2, s32 arg3, f32 arg4, f32 arg5, f32 arg6, f32 arg7, f32 arg8, f32 arg9, s16 arg10, s16 arg11, u16 arg12, f32 arg13, f32 arg14, u8 arg15, f32 arg16);
 void func_150EA904();
 void func_1510B32C();
-void func_1510B958();
+void updateCullScales_1510B958(s32 cameraIndex);
 s32  func_1510B9D0();
 void    func_1510F800();
 void *  func_1510FD20();

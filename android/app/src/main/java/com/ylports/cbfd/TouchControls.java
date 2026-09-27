@@ -8,9 +8,7 @@ import android.view.*;
 /** Lightweight hardware-canvas overlay: compact thumb cluster and independent pointers. */
 final class TouchControls extends View {
     interface InputSink { void accept(int buttons,float x,float y); }
-    interface CameraSink { void accept(float x,float y); }
     private final InputSink input;
-    private final CameraSink camera;
     private final TouchLayout layout=new TouchLayout();
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect=new RectF();
@@ -18,7 +16,7 @@ final class TouchControls extends View {
     private final Runnable diagnostics;
     private float insetLeft,insetRight,insetTop,insetBottom;
     private int sentMask;
-    private float sentX,sentY,sentCameraX,sentCameraY;
+    private float sentX,sentY;
     private final StartGesture startGesture=new StartGesture();
     private static final String[] LABEL={"A","B","Z","L","R","START"};
     private static final int[] ACCENT={0xff8cc3f5,0xff91d4a0,0xffdae0e8,0xffd5dce4,0xffd5dce4,0xffd5dce4,
@@ -26,17 +24,14 @@ final class TouchControls extends View {
     private final Runnable longStart;
     private final Runnable releaseStartPulse=()->{startGesture.endPulse();sendInput();};
     TouchControls(Context context,Runnable copyDiagnostics) {
-        this(context,copyDiagnostics,GameActivity::nativeInput,GameActivity::nativeCamera);
+        this(context,copyDiagnostics,GameActivity::nativeInput);
     }
     TouchControls(Context context,Runnable copyDiagnostics,InputSink sink) {
-        this(context,copyDiagnostics,sink,(x,y)->{}); // isolated UI tests have no game JNI
-    }
-    TouchControls(Context context,Runnable copyDiagnostics,InputSink sink,CameraSink cameraSink) {
-        super(context);diagnostics=copyDiagnostics;input=sink;camera=cameraSink;setFocusable(false);
+        super(context);diagnostics=copyDiagnostics;input=sink;setFocusable(false);
         longStart=()->{
             if(startGesture.capture() && diagnostics!=null) diagnostics.run();
         };
-        setContentDescription("Controles: palanca izquierda para moverse, palanca derecha para cámara orbital analógica, A B Z. Mantener START copia el diagnóstico.");
+        setContentDescription("Controles: palanca izquierda para moverse, palanca derecha para los botones C, A B Z. Mantener START copia el diagnóstico.");
         paint.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
     }
     @Override protected void onSizeChanged(int w,int h,int oldw,int oldh) { resize(); }
@@ -77,10 +72,6 @@ final class TouchControls extends View {
     }
     private void sendInput() {
         final int buttons=startGesture.filter(layout.mask);
-        if(layout.cameraAxisX!=sentCameraX || layout.cameraAxisY!=sentCameraY) {
-            camera.accept(layout.cameraAxisX,layout.cameraAxisY);
-            sentCameraX=layout.cameraAxisX;sentCameraY=layout.cameraAxisY;
-        }
         // Quantize below the N64 stick's precision; never drop button edges.
         if(buttons!=sentMask||Math.abs(layout.axisX-sentX)>1f/512||Math.abs(layout.axisY-sentY)>1f/512
             ||(layout.axisX==0&&sentX!=0)||(layout.axisY==0&&sentY!=0)) {

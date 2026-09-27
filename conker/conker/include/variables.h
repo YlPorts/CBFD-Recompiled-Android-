@@ -566,6 +566,10 @@ extern u32 D_8009667C;
 extern f32 D_800968B0;
 extern f32 D_800968C0;
 extern s32 D_800968E0;
+// The x and y scales the clip-space culls apply to view-space points (see
+// updateCullScales_1510B958).
+extern f32 cullScaleX_800D35E0;
+extern f32 cullScaleY_800D35E4;
 extern f32 D_80096900;
 extern f32 D_80096904;
 
