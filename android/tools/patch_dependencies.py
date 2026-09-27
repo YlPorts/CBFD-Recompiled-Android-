@@ -16,7 +16,7 @@ def replace(path, before, after, count=1):
     file.write_text(text.replace(before, after, count))
 
 
-def main():
+def apply_base():
     rt64 = 'tools/rt64/CMakeLists.txt'
     replace(rt64, 'add_subdirectory(src/tools/file_to_c)', '''if (ANDROID)
     if (NOT CONKER_HOST_FILE_TO_C OR NOT EXISTS "${CONKER_HOST_FILE_TO_C}")
@@ -68,7 +68,65 @@ endif()''')
     if reverse.returncode != 0:
         subprocess.run(['git', 'apply', '--check', str(patch)], cwd=ROOT, check=True)
         subprocess.run(['git', 'apply', str(patch)], cwd=ROOT, check=True)
-    print('Android build and Vulkan surface adaptations applied; Conker patches retained.')
+    mobile_patch = ROOT / 'android/patches/mobile-performance-v2.patch'
+    def check(patch, reverse=False):
+        return subprocess.run(['git','apply',*(['--reverse'] if reverse else []),'--check',str(patch)],
+            cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+    if not check(mobile_patch, True):
+        if not check(mobile_patch):
+            old = ROOT / 'android/patches/mobile-performance.patch'
+            if not check(old, True):
+                raise SystemExit('Mobile dependency files differ; refusing to overwrite local changes.')
+            subprocess.run(['git','apply','--reverse',str(old)],cwd=ROOT,check=True)
+        subprocess.run(['git','apply','--check',str(mobile_patch)],cwd=ROOT,check=True)
+        subprocess.run(['git','apply',str(mobile_patch)],cwd=ROOT,check=True)
+    print('Android surface, mobile matching and clipped bounds patches applied.')
+
+def apply_017():
+    # Temporarily remove only this known, fully matched layer. Older patch layers
+    # may otherwise fail reverse-check because 0.1.7 touches the same lines.
+    # git apply is atomic for each layer; there is no checkout/reset/clean.
+    patch = ROOT / 'android/patches/native-render-017.patch'
+    def check(reverse=False):
+        return subprocess.run(['git','apply',*(['--reverse'] if reverse else []),'--check',str(patch)],
+            cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode == 0
+    removed = check(True)
+    if removed:
+        subprocess.run(['git','apply','--reverse',str(patch)],cwd=ROOT,check=True)
+    try:
+        apply_base()
+        if not check():
+            raise SystemExit('0.1.7 native dependencies differ; refusing to overwrite local changes.')
+        subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+    except BaseException:
+        # Restore a removed layer when it still applies after the failed step.
+        if removed and check():
+            subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+        raise
+    print('0.1.7 screen-Z, ordered vertex edits, matrix-vector path and edge-clear layer applied.')
+
+
+
+def main():
+    # Layer 0.1.8 depends on 0.1.7. Remove only a fully matched known patch;
+    # never reset a dependency or silently discard unrelated local edits.
+    patch = ROOT / 'android/patches/mali-blend-surface-018.patch'
+    def check(reverse=False):
+        return subprocess.run(['git','apply',*(['--reverse'] if reverse else []),'--check',str(patch)],
+            cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode == 0
+    removed = check(True)
+    if removed:
+        subprocess.run(['git','apply','--reverse',str(patch)],cwd=ROOT,check=True)
+    try:
+        apply_017()
+        if not check():
+            raise SystemExit('0.1.8 dependencies differ; refusing to overwrite local changes.')
+        subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+    except BaseException:
+        if removed and check():
+            subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+        raise
+    print('0.1.8 capability-based blend, retained Android surface and queue-wakeup layer applied.')
 
 if __name__ == '__main__':
     main()

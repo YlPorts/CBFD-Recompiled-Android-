@@ -1,0 +1,4 @@
+PASS 184 touch layout/ownership checks
+PASS 34 render safety/metrics checks, including 40000 concurrent samples
+PASS 35976 native matching/clipping assertions (synthetic, no GPU/game)
+Touch/bounds/metrics tests passed. These do not measure FPS or prove the water is fixed in game.

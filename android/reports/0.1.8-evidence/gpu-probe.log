@@ -1,0 +1,10 @@
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /mnt/data/work018/kit/android/build-gpu018/build
+[1/4] Building CXX object CMakeFiles/probe.dir/probe.cpp.o
+[2/4] Building CXX object CMakeFiles/plume.dir/plume_offscreen.cpp.o
+[3/4] Linking CXX static library libplume.a
+[4/4] Linking CXX executable probe
+[gpu-caps] dualSrcBlend=0 depthClamp=1 independentBlend=1 maxDualSourceAttachments=1
+actual Vulkan dualSourceBlend=0 depthClamp=1
+GPU probe: 20 overlap/depth/coverage cases, 102400 components, 0 discrepancies (RGB UNORM tolerance 2/255)

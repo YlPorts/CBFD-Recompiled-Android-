@@ -1,0 +1,2 @@
+PASS 40022 queue ownership/wakeup/shutdown assertions (exact production methods; host only)
+PASS raw-triangle swap retains the declared 32-bit vertex index (source assertion)

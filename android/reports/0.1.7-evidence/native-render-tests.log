@@ -1,0 +1,5 @@
+PASS 29609 screen-edit/clear/matrix/orbit assertions; max position reassociation error=3.05176e-05 (synthetic CPU tests, no phone FPS)
+[camera] Normal-camera hook reached: addr=8014FA30 flags=0000000E actor=80144BEC allowed=1
+[camera] Native orbital yaw/pitch applied to game camera; original collision/view update follows
+PASS 52 actual camera-hook + original recompiled routine comparisons (no graphics)
+PASS fixed2x/native-Surface/no-C-remapping source guards

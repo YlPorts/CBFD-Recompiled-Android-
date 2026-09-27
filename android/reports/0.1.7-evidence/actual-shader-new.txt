@@ -1,0 +1,3 @@
+Vulkan device: SwiftShader Device (Subzero), api=1.3.0
+depthClamp=1 shaderInt16=0 shaderInt64=0 geometry=0
+NEW SHADER: 1024 components, 0 mismatches, max_error=0; z_sample expected=0.284444451 actual=0.284444451

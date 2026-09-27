@@ -34,7 +34,7 @@ def main():
         harness = Path(tmp)/'swapchain.cpp'
         harness.write_text('#include "vulkan_swapchain_fixture.hpp"\nnamespace plume {\n' + base + '\n' + derived + '\n' + methods + '\n}\n' + (R/'android/tests/vulkan_swapchain_mock_main.cpp').read_text())
         mocked = Path(tmp)/'swapchain-mocked'
-        subprocess.run([compiler,'-std=c++17','-O1','-g','-Wall','-Wextra','-Wno-address','-fsanitize=undefined','-fno-sanitize-recover=all',f'-I{includes}',f'-I{R}/android/tests',str(harness),'-o',str(mocked)],check=True)
+        subprocess.run([compiler,'-std=c++17','-O1','-g','-Wall','-Wextra','-Wno-address','-fsanitize=undefined','-fno-sanitize-recover=all',f'-I{includes}',f'-I{R}/android/tests',f'-I{R}/android/tests/stubs',str(harness),'-o',str(mocked)],check=True)
         subprocess.run([str(mocked)],check=True)
         app = (R/'tools/rt64/src/hle/rt64_application.cpp').read_text()
         shaders = (R/'tools/rt64/src/render/rt64_shader_library.cpp').read_text()

@@ -1,0 +1,223 @@
+{
+  "artifact": {
+    "version": "0.1.8-alpha",
+    "version_code": 9,
+    "build": "blend-surface-018",
+    "apk_file": "Conker-Recompiled-0.1.8-alpha-arm64.apk",
+    "apk_size": 23364203,
+    "apk_sha256": "cf5eb7ee048f4a39813c928b22da99db14b25e9accf262a533c5d9dfafd7e951",
+    "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+    "same_certificate_as_017": true,
+    "zip_align_16k": true,
+    "libraries": {
+      "lib/arm64-v8a/libmain.so": {
+        "sha256": "8eb4240cf3547c515cb0a9a9e2dba5ec67c8e946a0fce5ff8a1c0e6a3a116d1d",
+        "size": 20067576,
+        "aarch64": true,
+        "load_segments": [
+          {
+            "file_offset": 0,
+            "virtual_address": 0,
+            "alignment": 16384
+          },
+          {
+            "file_offset": 18257808,
+            "virtual_address": 18274192,
+            "alignment": 16384
+          },
+          {
+            "file_offset": 18315000,
+            "virtual_address": 18347768,
+            "alignment": 16384
+          }
+        ]
+      },
+      "lib/arm64-v8a/libSDL2.so": {
+        "sha256": "cbd4994f4f4816ec386204ff20739a902a3dcff3a6abfb3abac855930a849c0f",
+        "size": 1490536,
+        "aarch64": true,
+        "load_segments": [
+          {
+            "file_offset": 0,
+            "virtual_address": 0,
+            "alignment": 16384
+          },
+          {
+            "file_offset": 1220960,
+            "virtual_address": 1237344,
+            "alignment": 16384
+          },
+          {
+            "file_offset": 1240816,
+            "virtual_address": 1273584,
+            "alignment": 16384
+          }
+        ]
+      },
+      "lib/arm64-v8a/libc++_shared.so": {
+        "sha256": "836c4dfd05a30d786fd75ff39a3f4730b3fba313d63b0fde895361e8985d7f92",
+        "size": 1728248,
+        "aarch64": true,
+        "load_segments": [
+          {
+            "file_offset": 0,
+            "virtual_address": 0,
+            "alignment": 16384
+          },
+          {
+            "file_offset": 624800,
+            "virtual_address": 641184,
+            "alignment": 16384
+          },
+          {
+            "file_offset": 1210520,
+            "virtual_address": 1243288,
+            "alignment": 16384
+          },
+          {
+            "file_offset": 1250352,
+            "virtual_address": 1299504,
+            "alignment": 16384
+          }
+        ]
+      }
+    },
+    "single_source_shader_modules": [
+      {
+        "name": "RasterPSDynamicColor.hlsl.spv",
+        "sha256": "702966a2d913c6fbb4d5844f0dd58bbb59f887e33947b9076e464ed739860a5a",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSDynamicColorMS.hlsl.spv",
+        "sha256": "a4cf684bd7c31f0da7361b2f1f6960fcea102d177aefc67dce82c151ddea6451",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSSpecColor.hlsl.spv",
+        "sha256": "71b3a847b76de8ba31a5f628b4bbde415d5f40014af6556a56d40bd0d53c5e78",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSSpecColorFlat.hlsl.spv",
+        "sha256": "dd61f655e0249a9c54db4e186ff7770a508fcee5002aab34f45db27feaa97064",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSSpecColorFlatMS.hlsl.spv",
+        "sha256": "25216a6078a8d6ceaa946fd897a5e304a81b151afaa181a9cebf2999f3c5934b",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSSpecColorMS.hlsl.spv",
+        "sha256": "b4b29a988a44333b899bfe2d032927540910f3418ed6e918dab9a26a0ed8f1fa",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSDynamicCoverage.hlsl.spv",
+        "sha256": "f297cc6b30e7c423dd6b9db0189a98357b5e2c88a10ae1a51245ec7a9695a541",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSDynamicCoverageMS.hlsl.spv",
+        "sha256": "28427d38d753cb7fd485a773ceec9253897a0108c23d67619001a2e02e149daf",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSSpecCoverage.hlsl.spv",
+        "sha256": "79085d5c2c4578bf24a659e320bd6e88be49ac31b58e5035c88f409b9afb6d9a",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSSpecCoverageFlat.hlsl.spv",
+        "sha256": "8a83abb3b58f5360901da02df5c6a42ee74fbe768bdea53dc494d3615ee2958b",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSSpecCoverageFlatMS.hlsl.spv",
+        "sha256": "3db6a1a6e902c458fddb25ab9f1d6d98f2ea9ef80545fff9096d73f8f98b11c8",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      },
+      {
+        "name": "RasterPSSpecCoverageMS.hlsl.spv",
+        "sha256": "5ed08d6f582d315bdf55c49b2abd45fee41b188a12934e373c34d624276e20be",
+        "secondary_index_one": false,
+        "embedded_byte_for_byte": true
+      }
+    ],
+    "native_symbols": [
+      "SDL_main",
+      "Java_com_ylports_cbfd_GameActivity_nativeSurface",
+      "Java_com_ylports_cbfd_GameActivity_nativeForeground",
+      "Java_com_ylports_cbfd_GameActivity_nativeCamera"
+    ],
+    "phone_gameplay_test": false,
+    "measured_A15_fps": null,
+    "water_popin_visually_verified": false,
+    "software_vulkan_test": {
+      "backend": "SwiftShader",
+      "dualSrcBlend": false,
+      "test_cases": 20,
+      "components": 102400,
+      "discrepancies_beyond_tolerance": 0,
+      "rgb_tolerance_unorm": 0.00784313725490196,
+      "scope": "Production pipeline creation and fragment output packing, synthetic overlap/depth/coverage inputs; not the full game or Mali."
+    }
+  },
+  "host_tests": [
+    {
+      "name": "importer",
+      "returncode": 0,
+      "seconds": 1.725,
+      "log": "importer-final.log"
+    },
+    {
+      "name": "storage",
+      "returncode": 0,
+      "seconds": 1.137,
+      "log": "storage-final.log"
+    },
+    {
+      "name": "mobile",
+      "returncode": 0,
+      "seconds": 2.424,
+      "log": "mobile-final.log"
+    },
+    {
+      "name": "matcher",
+      "returncode": 0,
+      "seconds": 5.984,
+      "log": "matcher-final.log"
+    },
+    {
+      "name": "render-camera",
+      "returncode": 0,
+      "seconds": 3.226,
+      "log": "render-camera-final.log"
+    },
+    {
+      "name": "surface",
+      "returncode": 0,
+      "seconds": 2.981,
+      "log": "surface-final.log"
+    },
+    {
+      "name": "queues",
+      "returncode": 0,
+      "seconds": 3.875,
+      "log": "queues-final.log"
+    }
+  ],
+  "patch_reapply_hashes_unchanged": true
+}

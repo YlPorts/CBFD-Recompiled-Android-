@@ -1,0 +1,22 @@
+PASS: 40 Vulkan surface policy checks (no driver/gameplay test)
+[wsi] Advertised format=37 colorSpace=0
+[wsi] Selected format=37 colorSpace=0 (requested=44)
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] Swapchain ready: 2340x1080, 3 real images
+[wsi] First frame presented successfully
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] vkCreateSwapchainKHR: VK_ERROR_SURFACE_LOST_KHR (-1000000000 / 0xC4653600); no image access attempted.
+[wsi] Advertised format=97 colorSpace=0
+[wsi] No supported UNORM/sRGB surface pair; setup refused safely.
+[wsi] Surface format query failed: VK_ERROR_SURFACE_LOST_KHR (-1000000000)
+[wsi] Advertised format=37 colorSpace=0
+[wsi] Selected format=37 colorSpace=0 (requested=44)
+[wsi] Creating swapchain 2340x1080 format=37 colorSpace=0 images=3 usage=0x10 transform=0x1 alpha=0x8
+[wsi] Swapchain image view creation failed.
+[wsi] Advertised format=37 colorSpace=0
+[wsi] Selected format=37 colorSpace=0 (requested=44)
+[wsi] Advertised format=37 colorSpace=0
+[wsi] Selected format=37 colorSpace=0 (requested=44)
+[wsi] No usable surface settings: usage=0x0 alpha=0x8 transforms=0x1
+PASS: 30 actual Plume swapchain method checks with mocked SDL/Vulkan (not gameplay)
+PASS: 3 RT64 initialization/pipeline integration checks

@@ -1,0 +1,208 @@
+In file included from /mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++.h:24,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_hlslpp.h:13,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_common.h:12,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_math.h:7,
+                 from /mnt/data/cbfd-work/android/tests/matcher_math_test.cpp:9:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float1 hlslpp::asfloat(const uint1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:102:72: warning: casting ‘const hlslpp::uint1’ to ‘hlslpp::float1&’ does not use ‘hlslpp::float1::float1(const hlslpp::uint1&)’ [-Wcast-user-defined]
+  102 |         hlslpp_inline float1 asfloat(const uint1& v) { return (float1&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float2 hlslpp::asfloat(const uint2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:103:72: warning: casting ‘const hlslpp::uint2’ to ‘hlslpp::float2&’ does not use ‘hlslpp::float2::float2(const hlslpp::uint2&)’ [-Wcast-user-defined]
+  103 |         hlslpp_inline float2 asfloat(const uint2& v) { return (float2&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float3 hlslpp::asfloat(const uint3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:104:72: warning: casting ‘const hlslpp::uint3’ to ‘hlslpp::float3&’ does not use ‘hlslpp::float3::float3(const hlslpp::uint3&)’ [-Wcast-user-defined]
+  104 |         hlslpp_inline float3 asfloat(const uint3& v) { return (float3&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float4 hlslpp::asfloat(const uint4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:105:72: warning: casting ‘const hlslpp::uint4’ to ‘hlslpp::float4&’ does not use ‘hlslpp::float4::float4(const hlslpp::uint4&)’ [-Wcast-user-defined]
+  105 |         hlslpp_inline float4 asfloat(const uint4& v) { return (float4&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float1 hlslpp::asfloat(const int1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:108:71: warning: casting ‘const hlslpp::int1’ to ‘hlslpp::float1&’ does not use ‘hlslpp::float1::float1(const hlslpp::int1&)’ [-Wcast-user-defined]
+  108 |         hlslpp_inline float1 asfloat(const int1& v) { return (float1&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float2 hlslpp::asfloat(const int2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:109:71: warning: casting ‘const hlslpp::int2’ to ‘hlslpp::float2&’ does not use ‘hlslpp::float2::float2(const hlslpp::int2&)’ [-Wcast-user-defined]
+  109 |         hlslpp_inline float2 asfloat(const int2& v) { return (float2&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float3 hlslpp::asfloat(const int3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:110:71: warning: casting ‘const hlslpp::int3’ to ‘hlslpp::float3&’ does not use ‘hlslpp::float3::float3(const hlslpp::int3&)’ [-Wcast-user-defined]
+  110 |         hlslpp_inline float3 asfloat(const int3& v) { return (float3&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float4 hlslpp::asfloat(const int4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:111:71: warning: casting ‘const hlslpp::int4’ to ‘hlslpp::float4&’ does not use ‘hlslpp::float4::float4(const hlslpp::int4&)’ [-Wcast-user-defined]
+  111 |         hlslpp_inline float4 asfloat(const int4& v) { return (float4&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint1 hlslpp::asuint(const float1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:120:70: warning: casting ‘const hlslpp::float1’ to ‘hlslpp::uint1&’ does not use ‘hlslpp::uint1::uint1(const hlslpp::float1&)’ [-Wcast-user-defined]
+  120 |         hlslpp_inline uint1 asuint(const float1& v) { return (uint1&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint2 hlslpp::asuint(const float2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:121:70: warning: casting ‘const hlslpp::float2’ to ‘hlslpp::uint2&’ does not use ‘hlslpp::uint2::uint2(const hlslpp::float2&)’ [-Wcast-user-defined]
+  121 |         hlslpp_inline uint2 asuint(const float2& v) { return (uint2&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint3 hlslpp::asuint(const float3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:122:70: warning: casting ‘const hlslpp::float3’ to ‘hlslpp::uint3&’ does not use ‘hlslpp::uint3::uint3(const hlslpp::float3&)’ [-Wcast-user-defined]
+  122 |         hlslpp_inline uint3 asuint(const float3& v) { return (uint3&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint4 hlslpp::asuint(const float4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:123:70: warning: casting ‘const hlslpp::float4’ to ‘hlslpp::uint4&’ does not use ‘hlslpp::uint4::uint4(const hlslpp::float4&)’ [-Wcast-user-defined]
+  123 |         hlslpp_inline uint4 asuint(const float4& v) { return (uint4&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int1 hlslpp::asint(const float1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:132:67: warning: casting ‘const hlslpp::float1’ to ‘hlslpp::int1&’ does not use ‘hlslpp::int1::int1(const hlslpp::float1&)’ [-Wcast-user-defined]
+  132 |         hlslpp_inline int1 asint(const float1& v) { return (int1&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int2 hlslpp::asint(const float2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:133:67: warning: casting ‘const hlslpp::float2’ to ‘hlslpp::int2&’ does not use ‘hlslpp::int2::int2(const hlslpp::float2&)’ [-Wcast-user-defined]
+  133 |         hlslpp_inline int2 asint(const float2& v) { return (int2&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int3 hlslpp::asint(const float3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:134:67: warning: casting ‘const hlslpp::float3’ to ‘hlslpp::int3&’ does not use ‘hlslpp::int3::int3(const hlslpp::float3&)’ [-Wcast-user-defined]
+  134 |         hlslpp_inline int3 asint(const float3& v) { return (int3&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int4 hlslpp::asint(const float4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:135:67: warning: casting ‘const hlslpp::float4’ to ‘hlslpp::int4&’ does not use ‘hlslpp::int4::int4(const hlslpp::float4&)’ [-Wcast-user-defined]
+  135 |         hlslpp_inline int4 asint(const float4& v) { return (int4&)v; }
+      |                                                                   ^
+In file included from /mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++.h:24,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_hlslpp.h:13,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_common.h:12,
+                 from /mnt/data/cbfd-work/tools/rt64/src/hle/rt64_rigid_body.h:7,
+                 from /mnt/data/cbfd-work/tools/rt64/src/hle/rt64_rigid_body.cpp:5:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float1 hlslpp::asfloat(const uint1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:102:72: warning: casting ‘const hlslpp::uint1’ to ‘hlslpp::float1&’ does not use ‘hlslpp::float1::float1(const hlslpp::uint1&)’ [-Wcast-user-defined]
+  102 |         hlslpp_inline float1 asfloat(const uint1& v) { return (float1&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float2 hlslpp::asfloat(const uint2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:103:72: warning: casting ‘const hlslpp::uint2’ to ‘hlslpp::float2&’ does not use ‘hlslpp::float2::float2(const hlslpp::uint2&)’ [-Wcast-user-defined]
+  103 |         hlslpp_inline float2 asfloat(const uint2& v) { return (float2&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float3 hlslpp::asfloat(const uint3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:104:72: warning: casting ‘const hlslpp::uint3’ to ‘hlslpp::float3&’ does not use ‘hlslpp::float3::float3(const hlslpp::uint3&)’ [-Wcast-user-defined]
+  104 |         hlslpp_inline float3 asfloat(const uint3& v) { return (float3&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float4 hlslpp::asfloat(const uint4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:105:72: warning: casting ‘const hlslpp::uint4’ to ‘hlslpp::float4&’ does not use ‘hlslpp::float4::float4(const hlslpp::uint4&)’ [-Wcast-user-defined]
+  105 |         hlslpp_inline float4 asfloat(const uint4& v) { return (float4&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float1 hlslpp::asfloat(const int1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:108:71: warning: casting ‘const hlslpp::int1’ to ‘hlslpp::float1&’ does not use ‘hlslpp::float1::float1(const hlslpp::int1&)’ [-Wcast-user-defined]
+  108 |         hlslpp_inline float1 asfloat(const int1& v) { return (float1&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float2 hlslpp::asfloat(const int2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:109:71: warning: casting ‘const hlslpp::int2’ to ‘hlslpp::float2&’ does not use ‘hlslpp::float2::float2(const hlslpp::int2&)’ [-Wcast-user-defined]
+  109 |         hlslpp_inline float2 asfloat(const int2& v) { return (float2&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float3 hlslpp::asfloat(const int3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:110:71: warning: casting ‘const hlslpp::int3’ to ‘hlslpp::float3&’ does not use ‘hlslpp::float3::float3(const hlslpp::int3&)’ [-Wcast-user-defined]
+  110 |         hlslpp_inline float3 asfloat(const int3& v) { return (float3&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float4 hlslpp::asfloat(const int4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:111:71: warning: casting ‘const hlslpp::int4’ to ‘hlslpp::float4&’ does not use ‘hlslpp::float4::float4(const hlslpp::int4&)’ [-Wcast-user-defined]
+  111 |         hlslpp_inline float4 asfloat(const int4& v) { return (float4&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint1 hlslpp::asuint(const float1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:120:70: warning: casting ‘const hlslpp::float1’ to ‘hlslpp::uint1&’ does not use ‘hlslpp::uint1::uint1(const hlslpp::float1&)’ [-Wcast-user-defined]
+  120 |         hlslpp_inline uint1 asuint(const float1& v) { return (uint1&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint2 hlslpp::asuint(const float2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:121:70: warning: casting ‘const hlslpp::float2’ to ‘hlslpp::uint2&’ does not use ‘hlslpp::uint2::uint2(const hlslpp::float2&)’ [-Wcast-user-defined]
+  121 |         hlslpp_inline uint2 asuint(const float2& v) { return (uint2&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint3 hlslpp::asuint(const float3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:122:70: warning: casting ‘const hlslpp::float3’ to ‘hlslpp::uint3&’ does not use ‘hlslpp::uint3::uint3(const hlslpp::float3&)’ [-Wcast-user-defined]
+  122 |         hlslpp_inline uint3 asuint(const float3& v) { return (uint3&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint4 hlslpp::asuint(const float4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:123:70: warning: casting ‘const hlslpp::float4’ to ‘hlslpp::uint4&’ does not use ‘hlslpp::uint4::uint4(const hlslpp::float4&)’ [-Wcast-user-defined]
+  123 |         hlslpp_inline uint4 asuint(const float4& v) { return (uint4&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int1 hlslpp::asint(const float1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:132:67: warning: casting ‘const hlslpp::float1’ to ‘hlslpp::int1&’ does not use ‘hlslpp::int1::int1(const hlslpp::float1&)’ [-Wcast-user-defined]
+  132 |         hlslpp_inline int1 asint(const float1& v) { return (int1&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int2 hlslpp::asint(const float2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:133:67: warning: casting ‘const hlslpp::float2’ to ‘hlslpp::int2&’ does not use ‘hlslpp::int2::int2(const hlslpp::float2&)’ [-Wcast-user-defined]
+  133 |         hlslpp_inline int2 asint(const float2& v) { return (int2&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int3 hlslpp::asint(const float3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:134:67: warning: casting ‘const hlslpp::float3’ to ‘hlslpp::int3&’ does not use ‘hlslpp::int3::int3(const hlslpp::float3&)’ [-Wcast-user-defined]
+  134 |         hlslpp_inline int3 asint(const float3& v) { return (int3&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int4 hlslpp::asint(const float4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:135:67: warning: casting ‘const hlslpp::float4’ to ‘hlslpp::int4&’ does not use ‘hlslpp::int4::int4(const hlslpp::float4&)’ [-Wcast-user-defined]
+  135 |         hlslpp_inline int4 asint(const float4& v) { return (int4&)v; }
+      |                                                                   ^
+In file included from /mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++.h:24,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_hlslpp.h:13,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_common.h:12,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_math.h:7,
+                 from /mnt/data/cbfd-work/tools/rt64/src/common/rt64_math.cpp:5:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float1 hlslpp::asfloat(const uint1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:102:72: warning: casting ‘const hlslpp::uint1’ to ‘hlslpp::float1&’ does not use ‘hlslpp::float1::float1(const hlslpp::uint1&)’ [-Wcast-user-defined]
+  102 |         hlslpp_inline float1 asfloat(const uint1& v) { return (float1&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float2 hlslpp::asfloat(const uint2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:103:72: warning: casting ‘const hlslpp::uint2’ to ‘hlslpp::float2&’ does not use ‘hlslpp::float2::float2(const hlslpp::uint2&)’ [-Wcast-user-defined]
+  103 |         hlslpp_inline float2 asfloat(const uint2& v) { return (float2&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float3 hlslpp::asfloat(const uint3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:104:72: warning: casting ‘const hlslpp::uint3’ to ‘hlslpp::float3&’ does not use ‘hlslpp::float3::float3(const hlslpp::uint3&)’ [-Wcast-user-defined]
+  104 |         hlslpp_inline float3 asfloat(const uint3& v) { return (float3&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float4 hlslpp::asfloat(const uint4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:105:72: warning: casting ‘const hlslpp::uint4’ to ‘hlslpp::float4&’ does not use ‘hlslpp::float4::float4(const hlslpp::uint4&)’ [-Wcast-user-defined]
+  105 |         hlslpp_inline float4 asfloat(const uint4& v) { return (float4&)v; }
+      |                                                                        ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float1 hlslpp::asfloat(const int1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:108:71: warning: casting ‘const hlslpp::int1’ to ‘hlslpp::float1&’ does not use ‘hlslpp::float1::float1(const hlslpp::int1&)’ [-Wcast-user-defined]
+  108 |         hlslpp_inline float1 asfloat(const int1& v) { return (float1&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float2 hlslpp::asfloat(const int2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:109:71: warning: casting ‘const hlslpp::int2’ to ‘hlslpp::float2&’ does not use ‘hlslpp::float2::float2(const hlslpp::int2&)’ [-Wcast-user-defined]
+  109 |         hlslpp_inline float2 asfloat(const int2& v) { return (float2&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float3 hlslpp::asfloat(const int3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:110:71: warning: casting ‘const hlslpp::int3’ to ‘hlslpp::float3&’ does not use ‘hlslpp::float3::float3(const hlslpp::int3&)’ [-Wcast-user-defined]
+  110 |         hlslpp_inline float3 asfloat(const int3& v) { return (float3&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::float4 hlslpp::asfloat(const int4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:111:71: warning: casting ‘const hlslpp::int4’ to ‘hlslpp::float4&’ does not use ‘hlslpp::float4::float4(const hlslpp::int4&)’ [-Wcast-user-defined]
+  111 |         hlslpp_inline float4 asfloat(const int4& v) { return (float4&)v; }
+      |                                                                       ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint1 hlslpp::asuint(const float1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:120:70: warning: casting ‘const hlslpp::float1’ to ‘hlslpp::uint1&’ does not use ‘hlslpp::uint1::uint1(const hlslpp::float1&)’ [-Wcast-user-defined]
+  120 |         hlslpp_inline uint1 asuint(const float1& v) { return (uint1&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint2 hlslpp::asuint(const float2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:121:70: warning: casting ‘const hlslpp::float2’ to ‘hlslpp::uint2&’ does not use ‘hlslpp::uint2::uint2(const hlslpp::float2&)’ [-Wcast-user-defined]
+  121 |         hlslpp_inline uint2 asuint(const float2& v) { return (uint2&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint3 hlslpp::asuint(const float3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:122:70: warning: casting ‘const hlslpp::float3’ to ‘hlslpp::uint3&’ does not use ‘hlslpp::uint3::uint3(const hlslpp::float3&)’ [-Wcast-user-defined]
+  122 |         hlslpp_inline uint3 asuint(const float3& v) { return (uint3&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::uint4 hlslpp::asuint(const float4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:123:70: warning: casting ‘const hlslpp::float4’ to ‘hlslpp::uint4&’ does not use ‘hlslpp::uint4::uint4(const hlslpp::float4&)’ [-Wcast-user-defined]
+  123 |         hlslpp_inline uint4 asuint(const float4& v) { return (uint4&)v; }
+      |                                                                      ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int1 hlslpp::asint(const float1&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:132:67: warning: casting ‘const hlslpp::float1’ to ‘hlslpp::int1&’ does not use ‘hlslpp::int1::int1(const hlslpp::float1&)’ [-Wcast-user-defined]
+  132 |         hlslpp_inline int1 asint(const float1& v) { return (int1&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int2 hlslpp::asint(const float2&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:133:67: warning: casting ‘const hlslpp::float2’ to ‘hlslpp::int2&’ does not use ‘hlslpp::int2::int2(const hlslpp::float2&)’ [-Wcast-user-defined]
+  133 |         hlslpp_inline int2 asint(const float2& v) { return (int2&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int3 hlslpp::asint(const float3&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:134:67: warning: casting ‘const hlslpp::float3’ to ‘hlslpp::int3&’ does not use ‘hlslpp::int3::int3(const hlslpp::float3&)’ [-Wcast-user-defined]
+  134 |         hlslpp_inline int3 asint(const float3& v) { return (int3&)v; }
+      |                                                                   ^
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h: In function ‘hlslpp::int4 hlslpp::asint(const float4&)’:
+/mnt/data/cbfd-work/tools/rt64/src/contrib/hlslpp/include/hlsl++/dependent.h:135:67: warning: casting ‘const hlslpp::float4’ to ‘hlslpp::int4&’ does not use ‘hlslpp::int4::int4(const hlslpp::float4&)’ [-Wcast-user-defined]
+  135 |         hlslpp_inline int4 asint(const float4& v) { return (int4&)v; }
+      |                                                                   ^
+PASS 6001 comparisons using the actual RT64 matcher and RigidBody source (host, not Mali)

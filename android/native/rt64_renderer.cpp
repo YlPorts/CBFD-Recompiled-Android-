@@ -5,6 +5,10 @@
 #include <memory>
 #include <cstdio>
 #include <exception>
+#include <chrono>
+#include "mobile_metrics.hpp"
+#include "mobile_camera.hpp"
+#include "surface_lifecycle.hpp"
 #include "librecomp/game.hpp"
 #include "rt64_storage.hpp"
 #include "hle/rt64_application.h"
@@ -18,7 +22,44 @@ class AndroidRenderer final : public RendererContext {
     unsigned int mi = 0, dpc[8]{};
     bool first_display_list = true;
     bool first_screen_update = true;
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point metrics_start = Clock::now();
+    conker::mobile::Snapshot last_metrics{};
+    uint64_t dl_count = 0, dl_us = 0;
+    uint64_t lastPairs=0,lastAvoided=0,lastRejected=0,lastBehind=0,lastClipped=0;
+    uint64_t modifyXY=0,modifyZ=0,modifyClones=0,modifyMerged=0;
     static void interrupt() {}
+    void report_metrics() {
+        const auto now = Clock::now();
+        const double seconds = std::chrono::duration<double>(now - metrics_start).count();
+        if (seconds < 5.0) return;
+        const auto sample = conker::mobile::snapshot();
+        auto average = [](uint64_t sum, uint64_t count) { return count ? double(sum) / (1000.0 * count) : 0.0; };
+        std::fprintf(stderr, "[perf] window=%.2fs presentSubmitFPS=%.2f renderedFPS=%.2f gameDLps=%.2f gpuMs=%.3f renderWallMs=%.3f dlWallMs=%.3f matchMs=%.3f conservativeBounds=%llu internal=%.2fx target=60\n",
+            seconds, (sample.presents-last_metrics.presents)/seconds, (sample.renders-last_metrics.renders)/seconds, dl_count/seconds,
+            average(sample.gpuUs-last_metrics.gpuUs,sample.gpuSamples-last_metrics.gpuSamples),
+            average(sample.renderUs-last_metrics.renderUs,sample.renders-last_metrics.renders), average(dl_us,dl_count),
+            average(sample.matchUs-last_metrics.matchUs,sample.matches-last_metrics.matches),
+            static_cast<unsigned long long>(sample.boundsFallbacks-last_metrics.boundsFallbacks), app->userConfig.resolutionMultiplier);
+        auto& m=conker::mobile::metrics;
+        auto pairs=m.matchPairs.load(),avoided=m.matchPairsAvoided.load(),rejected=m.meshRejected.load();
+        auto behind=m.boundsBehind.load(),clipped=m.boundsClipped.load();
+        std::fprintf(stderr,"[perf-detail] matchPairs=%llu avoidedPairs=%llu meshRejected=%llu behindBounds=%llu clippedBounds=%llu\n",
+            (unsigned long long)(pairs-lastPairs),(unsigned long long)(avoided-lastAvoided),(unsigned long long)(rejected-lastRejected),
+            (unsigned long long)(behind-lastBehind),(unsigned long long)(clipped-lastClipped));
+        lastPairs=pairs;lastAvoided=avoided;lastRejected=rejected;lastBehind=behind;lastClipped=clipped;
+        const auto camera=conker::camera::counters();
+        std::fprintf(stderr,"[render-detail] modifyXY=%llu modifyZ=%llu inheritedEdits=%llu mergedEdits=%llu cameraHooks=%llu cameraAllowed=%llu cameraUpdates=%llu cameraBlocked=%llu fullWidthClears=%llu quality=fixed2x\n",
+            (unsigned long long)modifyXY,(unsigned long long)modifyZ,(unsigned long long)modifyClones,(unsigned long long)modifyMerged,
+            (unsigned long long)camera.hooks,(unsigned long long)camera.allowed,(unsigned long long)camera.updates,(unsigned long long)camera.blocked,
+            (unsigned long long)m.edgeClears.load(std::memory_order_relaxed));
+        std::fprintf(stderr,"[compat-total] singleSourceDraws=%llu coveragePasses=%llu depthOrderedTriangles=%llu surfaceLosses=%llu surfaceRecoveries=%llu\n",
+            (unsigned long long)m.singleSourceDraws.load(),(unsigned long long)m.coveragePasses.load(),
+            (unsigned long long)m.depthOrderedTriangles.load(),(unsigned long long)conker::android::surfaceLosses.load(),
+            (unsigned long long)conker::android::surfaceRecoveries.load());
+        modifyXY=modifyZ=modifyClones=modifyMerged=0;
+        last_metrics=sample; dl_us=dl_count=0; metrics_start=now;
+    }
 public:
     AndroidRenderer(uint8_t* rdram, WindowHandle window) {
         chosen_api = GraphicsApi::Vulkan;
@@ -71,6 +112,9 @@ private:
         using U = RT64::UserConfiguration;
         app->userConfig.graphicsAPI = U::GraphicsAPI::Vulkan;
         app->userConfig.developerMode = false;
+        // Disable the desktop GPU keep-alive compute loop. It contends for the
+        // same worker/queue and spends battery even between useful frames.
+        app->userConfig.idleWorkActive = false;
         app->userConfig.resolution = U::Resolution::Manual;
         app->userConfig.resolutionMultiplier = 2.0;
         app->userConfig.downsampleMultiplier = 1;
@@ -98,6 +142,8 @@ private:
         }
         if (setup_result != SetupResult::Success) { app->end(); app.reset(); return; }
         app->setFullScreen(true);
+        std::fprintf(stderr, "[mobile] Fixed internal=2x; native Surface; adaptive resolution OFF; GPU idle work OFF\n");
+        metrics_start = Clock::now();
         std::fprintf(stderr, "[renderer] Vulkan ready; fullscreen/Expand; target presentation=60\n");
     }
 public:
@@ -112,9 +158,16 @@ public:
             std::fprintf(stderr, "[renderer] First Conker display list received\n");
             first_display_list = false;
         }
+        const auto begin = Clock::now();
         app->state->rsp->reset();
         app->interpreter->loadUCodeGBI(task->t.ucode & 0x3FFFFFF, task->t.ucode_data & 0x3FFFFFF, true);
         app->processDisplayLists(app->core.RDRAM, task->t.data_ptr & 0x3FFFFFF, 0, true);
+        dl_us += std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-begin).count();
+        ++dl_count;
+        const auto& edits=app->state->rsp->screenModifyRecords;
+        modifyXY+=edits.xyCommands;modifyZ+=edits.zCommands;
+        modifyClones+=edits.clones;modifyMerged+=edits.coalesced;
+        conker::mobile::publish_bounds();
     }
     void send_dummy_workload(uint32_t address) override {
         app->state->listProcessBegin();
@@ -129,6 +182,7 @@ public:
             first_screen_update = false;
         }
         app->updateScreen();
+        report_metrics();
     }
     void shutdown() override { if (app) { app->end(); app.reset(); } }
     uint32_t get_display_framerate() const override {

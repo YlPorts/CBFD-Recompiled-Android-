@@ -1,0 +1,865 @@
+diff --git a/tools/rt64/CMakeLists.txt b/tools/rt64/CMakeLists.txt
+--- a/tools/rt64/CMakeLists.txt
++++ b/tools/rt64/CMakeLists.txt
+@@ -573,3 +573,17 @@
+ 
+ target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/src)
+ 
++
++# Single-source devices: preserve RGB blending AND N64 coverage, separately.
++build_pixel_shader(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSDynamicColor.hlsl" "-D DYNAMIC_RENDER_PARAMS" "-D SINGLE_SOURCE_COLOR")
++build_pixel_shader(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSDynamicColorMS.hlsl" "-D DYNAMIC_RENDER_PARAMS" "-D SINGLE_SOURCE_COLOR" "-D MULTISAMPLING")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecColor.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COLOR")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecColorMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COLOR" "-D MULTISAMPLING")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecColorFlat.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COLOR" "-D VERTEX_FLAT_COLOR")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecColorFlatMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COLOR" "-D VERTEX_FLAT_COLOR" "-D MULTISAMPLING")
++build_pixel_shader(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSDynamicCoverage.hlsl" "-D DYNAMIC_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE")
++build_pixel_shader(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSDynamicCoverageMS.hlsl" "-D DYNAMIC_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D MULTISAMPLING")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecCoverage.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecCoverageMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D MULTISAMPLING")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecCoverageFlat.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D VERTEX_FLAT_COLOR")
++build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecCoverageFlatMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D SINGLE_SOURCE_COVERAGE" "-D VERTEX_FLAT_COLOR" "-D MULTISAMPLING")
+diff --git a/tools/rt64/src/contrib/plume/plume_render_interface_types.h b/tools/rt64/src/contrib/plume/plume_render_interface_types.h
+--- a/tools/rt64/src/contrib/plume/plume_render_interface_types.h
++++ b/tools/rt64/src/contrib/plume/plume_render_interface_types.h
+@@ -1762,6 +1762,10 @@
+     };
+ 
+     struct RenderDeviceCapabilities {
++        // Non-Vulkan backends already provide these. Vulkan reports the actual
++        // enabled feature bits; mobile hardware must not use SRC1 implicitly.
++        bool dualSourceBlend = true;
++        bool depthClamp = true;
+         // Geometry shaders.
+         bool geometryShader = false;
+ 
+diff --git a/tools/rt64/src/contrib/plume/plume_vulkan.cpp b/tools/rt64/src/contrib/plume/plume_vulkan.cpp
+--- a/tools/rt64/src/contrib/plume/plume_vulkan.cpp
++++ b/tools/rt64/src/contrib/plume/plume_vulkan.cpp
+@@ -9,6 +9,9 @@
+ #define VOLK_IMPLEMENTATION 
+ 
+ #include "plume_vulkan.h"
++#ifdef __ANDROID__
++#include "surface_lifecycle.hpp"
++#endif
+ #if defined(__ANDROID__)
+ #include "vulkan_surface_policy.hpp"
+ #endif
+@@ -2098,6 +2101,8 @@
+             fprintf(stderr, "vkCreateWin32SurfaceKHR failed with error code 0x%X.\n", res);
+             return;
+         }
++#   elif defined(__ANDROID__)
++        if (!recreateAndroidSurface()) return;
+ #   elif defined(PLUME_SDL_VULKAN_ENABLED)
+         VulkanInterface *renderInterface = commandQueue->device->renderInterface;
+         SDL_bool sdlRes = SDL_Vulkan_CreateSurface(desc.renderWindow, renderInterface->instance, &surface);
+@@ -2279,6 +2284,60 @@
+         commandQueue->swapChains.insert(this);
+     }
+ 
++#if defined(__ANDROID__)
++    void VulkanSwapChain::loseAndroidSurface(VkResult result, const char* operation) {
++        if (!surfaceLost) {
++            fprintf(stderr,"[wsi] %s: %s (%d); retiring epoch=%llu, no busy retry\n",
++                operation, conker::android::wsi::result_name(result),int(result),(unsigned long long)surfaceGeneration);
++            conker::android::surfaceLosses.fetch_add(1);
++        }
++        surfaceLost = true;
++        conker::android::surfaceBackoff();
++    }
++    bool VulkanSwapChain::recreateAndroidSurface() {
++        auto lease = conker::android::surfaceRegistry.acquire();
++        if (!lease.window) return false;
++        auto *device=commandQueue->device;
++        // Present uses this same physical queue. Wait before retiring image views,
++        // swapchain, surface, and its retained ANativeWindow reference.
++        if (surface != VK_NULL_HANDLE || vk != VK_NULL_HANDLE) {
++            std::lock_guard<std::mutex> lock(*commandQueue->queue->mutex);
++            VkResult idle=vkQueueWaitIdle(commandQueue->queue->vk);
++            if (idle != VK_SUCCESS) { ANativeWindow_release(lease.window); loseAndroidSurface(idle,"queue idle"); return false; }
++        }
++        releaseImageViews(); textures.clear(); releaseSwapChain();
++        width=height=0;
++        if (surface!=VK_NULL_HANDLE) vkDestroySurfaceKHR(device->renderInterface->instance,surface,nullptr);
++        surface=VK_NULL_HANDLE;
++        if(surfaceWindow) ANativeWindow_release(surfaceWindow);
++        surfaceWindow=lease.window;
++        surfaceGeneration=lease.generation;
++        VkAndroidSurfaceCreateInfoKHR info{};
++        info.sType=VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
++        info.window=surfaceWindow;
++        VkResult result=vkCreateAndroidSurfaceKHR(device->renderInterface->instance,&info,nullptr,&surface);
++        if(result!=VK_SUCCESS) { loseAndroidSurface(result,"create Android surface"); return false; }
++        VkBool32 supported=VK_FALSE;
++        result=vkGetPhysicalDeviceSurfaceSupportKHR(device->physicalDevice,commandQueue->familyIndex,surface,&supported);
++        if(result!=VK_SUCCESS || !supported) { loseAndroidSurface(result==VK_SUCCESS?VK_ERROR_INITIALIZATION_FAILED:result,"present support"); return false; }
++        // Initial construction negotiates normally. Recovery must keep the format
++        // already used by the VI pipeline, not silently switch it underneath it.
++        if(pickedSurfaceFormat.format!=VK_FORMAT_UNDEFINED) {
++            std::vector<VkSurfaceFormatKHR> formats;
++            result=conker::android::wsi::enumerate<VkSurfaceFormatKHR>([&](uint32_t* n,VkSurfaceFormatKHR* f){
++                return vkGetPhysicalDeviceSurfaceFormatsKHR(device->physicalDevice,surface,n,f);
++            },formats);
++            bool found=false;
++            for(const auto& f:formats) found |= (f.format==pickedSurfaceFormat.format || f.format==VK_FORMAT_UNDEFINED) && f.colorSpace==pickedSurfaceFormat.colorSpace;
++            if(result!=VK_SUCCESS || !found) { loseAndroidSurface(result==VK_SUCCESS?VK_ERROR_FORMAT_NOT_SUPPORTED:result,"recovery format"); return false; }
++        }
++        surfaceLost=false;
++        conker::android::surfaceRetryAfter.store(0);
++        fprintf(stderr,"[wsi] Android surface attached epoch=%llu native=%ux%u\n",(unsigned long long)surfaceGeneration,lease.width,lease.height);
++        return true;
++    }
++#endif
++
+     VulkanSwapChain::~VulkanSwapChain() {
+         releaseImageViews();
+         releaseSwapChain();
+@@ -2288,6 +2347,10 @@
+             vkDestroySurfaceKHR(renderInterface->instance, surface, nullptr);
+         }
+ 
++#if defined(__ANDROID__)
++        if (surfaceWindow) ANativeWindow_release(surfaceWindow);
++        surfaceWindow = nullptr;
++#endif
+         // Remove tracking from the parent command queue.
+         commandQueue->swapChains.erase(this);
+     }
+@@ -2337,7 +2400,7 @@
+         if ((res != VK_SUCCESS) && (res != VK_SUBOPTIMAL_KHR)) {
+ #endif
+ #if defined(__ANDROID__)
+-            fprintf(stderr, "[wsi] vkQueuePresentKHR: %s (%d)\n", conker::android::wsi::result_name(res), int(res));
++            loseAndroidSurface(res,"vkQueuePresentKHR");
+ #endif
+             return false;
+         }
+@@ -2363,14 +2426,20 @@
+     bool VulkanSwapChain::resize() {
+ #if defined(__ANDROID__)
+         namespace wsi = conker::android::wsi;
+-        if (!surfaceReady || surface == VK_NULL_HANDLE) return false;
++        if (!surfaceReady || !conker::android::surfaceCanRetry()) return false;
++        const bool reattached = surfaceLost || surface==VK_NULL_HANDLE || surfaceGeneration!=conker::android::surfaceRegistry.epoch();
++        if (reattached && !recreateAndroidSurface()) return false;
++        // All presentation resources (including previously signalled semaphores)
++        // may be retired only after their physical queue is idle.
++        { std::lock_guard<std::mutex> lock(*commandQueue->queue->mutex);
++          if (vkQueueWaitIdle(commandQueue->queue->vk)!=VK_SUCCESS) return false; }
+         uint32_t windowWidth = 0, windowHeight = 0;
+         getWindowSize(windowWidth, windowHeight);
+         if (!windowWidth || !windowHeight) return false;
+         VkSurfaceCapabilitiesKHR caps{};
+         VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(commandQueue->device->physicalDevice, surface, &caps);
+         if (res != VK_SUCCESS) {
+-            fprintf(stderr, "[wsi] Surface capabilities failed: %s (%d)\n", wsi::result_name(res), int(res));
++            loseAndroidSurface(res,"surface capabilities");
+             return false;
+         }
+         wsi::SurfaceSettings settings{};
+@@ -2410,6 +2479,7 @@
+         if (res != VK_SUCCESS) {
+             fprintf(stderr, "[wsi] vkCreateSwapchainKHR: %s (%d / 0x%X); no image access attempted.\n",
+                 wsi::result_name(res), int(res), unsigned(res));
++            loseAndroidSurface(res,"create swapchain");
+             return false;
+         }
+         vk = nextSwapchain;
+@@ -2450,7 +2520,8 @@
+         createdPresentMode = requiredPresentMode;
+         presentCount = 1;
+         currentPresentId = 0;
+-        fprintf(stderr, "[wsi] Swapchain ready: %ux%u, %u real images\n", width, height, desc.textureCount);
++        if (reattached) conker::android::surfaceRecoveries.fetch_add(1);
++        fprintf(stderr, "[wsi] Swapchain ready: %ux%u, %u real images; epoch=%llu recovered=%u\n", width, height, desc.textureCount,(unsigned long long)surfaceGeneration,unsigned(reattached));
+         return true;
+ #else
+         getWindowSize(width, height);
+@@ -2545,6 +2616,10 @@
+     }
+ 
+     bool VulkanSwapChain::needsResize() const {
++#if defined(__ANDROID__)
++        if (!conker::android::surfaceRegistry.usable()) return false;
++        if (surfaceLost || surfaceGeneration!=conker::android::surfaceRegistry.epoch()) return true;
++#endif
+         uint32_t windowWidth, windowHeight;
+         getWindowSize(windowWidth, windowHeight);
+         return (vk == VK_NULL_HANDLE) || (windowWidth != width) || (windowHeight != height) || (requiredPresentMode != createdPresentMode);
+@@ -2590,12 +2665,15 @@
+     }
+ 
+     bool VulkanSwapChain::isEmpty() const {
++#if defined(__ANDROID__)
++        if (surfaceLost || !conker::android::surfaceRegistry.usable()) return true;
++#endif
+         return (vk == VK_NULL_HANDLE) || (width == 0) || (height == 0);
+     }
+ 
+     uint32_t VulkanSwapChain::getRefreshRate() const {
+ #if defined(__ANDROID__)
+-        if (vk == VK_NULL_HANDLE || vkGetRefreshCycleDurationGOOGLE == nullptr) return 0;
++        if (isEmpty() || vkGetRefreshCycleDurationGOOGLE == nullptr) return 0;
+ #endif
+         VkRefreshCycleDurationGOOGLE refreshCycle = {};
+         VkResult res = vkGetRefreshCycleDurationGOOGLE(commandQueue->device->vk, vk, &refreshCycle);
+@@ -2608,7 +2686,11 @@
+     }
+ 
+     void VulkanSwapChain::getWindowSize(uint32_t &dstWidth, uint32_t &dstHeight) const {
+-#   if defined(_WIN64)
++#   if defined(__ANDROID__)
++        auto lease=conker::android::surfaceRegistry.acquire();
++        dstWidth=lease.window?lease.width:0; dstHeight=lease.window?lease.height:0;
++        if(lease.window) ANativeWindow_release(lease.window);
++#   elif defined(_WIN64)
+         RECT rect;
+         GetClientRect(desc.renderWindow, &rect);
+         dstWidth = rect.right - rect.left;
+@@ -2634,13 +2716,21 @@
+ 
+     bool VulkanSwapChain::acquireTexture(RenderCommandSemaphore *signalSemaphore, uint32_t *textureIndex) {
+ #if defined(__ANDROID__)
+-        if (vk == VK_NULL_HANDLE || textures.empty() || !signalSemaphore || !textureIndex) return false;
++        if (isEmpty() || surfaceGeneration!=conker::android::surfaceRegistry.epoch() || textures.empty() || !signalSemaphore || !textureIndex) return false;
+ #endif
+         assert(signalSemaphore != nullptr);
+ 
+         VulkanCommandSemaphore *interfaceSemaphore = static_cast<VulkanCommandSemaphore *>(signalSemaphore);
+-        VkResult res = vkAcquireNextImageKHR(commandQueue->device->vk, vk, UINT64_MAX, interfaceSemaphore->vk, VK_NULL_HANDLE, textureIndex);
++#if defined(__ANDROID__)
++        constexpr uint64_t acquireTimeout = 100000000; // bounded: lifecycle/quit must not hang
++#else
++        constexpr uint64_t acquireTimeout = UINT64_MAX;
++#endif
++        VkResult res = vkAcquireNextImageKHR(commandQueue->device->vk, vk, acquireTimeout, interfaceSemaphore->vk, VK_NULL_HANDLE, textureIndex);
+         if ((res != VK_SUCCESS) && (res != VK_SUBOPTIMAL_KHR)) {
++#if defined(__ANDROID__)
++            if(res!=VK_TIMEOUT && res!=VK_NOT_READY) loseAndroidSurface(res,"acquire image");
++#endif
+             return false;
+         }
+ 
+@@ -4053,6 +4143,11 @@
+         deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+         deviceFeatures.pNext = featuresChain;
+         vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures);
++        capabilities.dualSourceBlend = deviceFeatures.features.dualSrcBlend;
++        capabilities.depthClamp = deviceFeatures.features.depthClamp;
++        fprintf(stderr, "[gpu-caps] dualSrcBlend=%u depthClamp=%u independentBlend=%u maxDualSourceAttachments=%u\n",
++            deviceFeatures.features.dualSrcBlend, deviceFeatures.features.depthClamp,
++            deviceFeatures.features.independentBlend, physicalDeviceProperties.limits.maxFragmentDualSrcAttachments);
+ 
+         // Check for properties.
+         if (rayTracingFound) {
+diff --git a/tools/rt64/src/contrib/plume/plume_vulkan.h b/tools/rt64/src/contrib/plume/plume_vulkan.h
+--- a/tools/rt64/src/contrib/plume/plume_vulkan.h
++++ b/tools/rt64/src/contrib/plume/plume_vulkan.h
+@@ -243,6 +243,11 @@
+         bool mailboxPresentModeSupported = false;
+ #if defined(__ANDROID__)
+         bool surfaceReady = false;
++        bool surfaceLost = false;
++        uint64_t surfaceGeneration = 0;
++        ANativeWindow* surfaceWindow = nullptr;
++        bool recreateAndroidSurface();
++        void loseAndroidSurface(VkResult result, const char* operation);
+         RenderFormat getFormat() const override { return desc.format; }
+ #endif
+ 
+diff --git a/tools/rt64/src/hle/rt64_present_queue.cpp b/tools/rt64/src/hle/rt64_present_queue.cpp
+--- a/tools/rt64/src/hle/rt64_present_queue.cpp
++++ b/tools/rt64/src/hle/rt64_present_queue.cpp
+@@ -5,6 +5,7 @@
+ #include "rt64_present_queue.h"
+ #ifdef __ANDROID__
+ #include "mobile_metrics.hpp"
++#include "surface_lifecycle.hpp"
+ #endif
+ 
+ #include "common/rt64_thread.h"
+@@ -20,7 +21,7 @@
+     }
+ 
+     PresentQueue::~PresentQueue() {
+-        presentThreadRunning = false;
++        { std::scoped_lock<std::mutex> lock(cursorMutex); presentThreadRunning = false; }
+         cursorCondition.notify_all();
+ 
+         if (presentThread != nullptr) {
+@@ -39,21 +40,17 @@
+     }
+ 
+     void PresentQueue::advanceToNextPresent() {
+-        int nextWriteCursor = (writeCursor + 1) % presents.size();
+-
+-        // Stall the thread until the barrier is lifted if we're trying to write on a present being used by the GPU.
+-        bool waitForBarrier;
+-        do {
+-            const std::scoped_lock lock(cursorMutex);
+-            waitForBarrier = (nextWriteCursor == barrierCursor);
+-        } while (waitForBarrier);
+-
+-        // Modify the cursor and notify anything waiting on the queue.
++        // A producer must not overwrite a buffer still owned by the GPU. Sleep
++        // on the same mutex/condition as the consumer instead of busy-spinning.
+         {
+-            const std::scoped_lock lock(cursorMutex);
++            std::unique_lock<std::mutex> lock(cursorMutex);
++            const int nextWriteCursor = (writeCursor + 1) % presents.size();
++            cursorCondition.wait(lock, [&]() {
++                return nextWriteCursor != barrierCursor || !presentThreadRunning;
++            });
++            if (!presentThreadRunning) return;
+             writeCursor = nextWriteCursor;
+         }
+-
+         cursorCondition.notify_all();
+     }
+ 
+@@ -433,8 +430,11 @@
+     }
+     
+     void PresentQueue::threadAdvanceBarrier() {
+-        std::scoped_lock<std::mutex> cursorLock(cursorMutex);
+-        barrierCursor = (barrierCursor + 1) % presents.size();
++        {
++            std::scoped_lock<std::mutex> cursorLock(cursorMutex);
++            barrierCursor = (barrierCursor + 1) % presents.size();
++        }
++        cursorCondition.notify_all();
+     }
+ 
+     void PresentQueue::threadLoop() {
+@@ -473,17 +473,29 @@
+             if (processCursor >= 0) {
+                 std::unique_lock<std::mutex> threadLock(threadMutex);
+                 const bool needsResize = ext.swapChain->needsResize() || !swapChainValid;
+-                if (needsResize) {
++#ifdef __ANDROID__
++                const bool attemptResize = needsResize && conker::android::surfaceCanRetry();
++                if (!conker::android::surfaceRegistry.usable()) skipPresent = true;
++#else
++                const bool attemptResize = needsResize;
++#endif
++                if (attemptResize) {
+                     ext.presentGraphicsWorker->commandList->begin();
+                     ext.presentGraphicsWorker->commandList->end();
+                     ext.presentGraphicsWorker->execute();
+                     ext.presentGraphicsWorker->wait();
++                    swapChainFramebuffers.clear();
+                     swapChainValid = ext.swapChain->resize();
+-                    swapChainFramebuffers.clear();
+ 
+                     if (swapChainValid) {
+                         ext.sharedResources->setSwapChainSize(ext.swapChain->getWidth(), ext.swapChain->getHeight());
+                         
++#ifdef __ANDROID__
++                        // A failed present may not consume its binary semaphore.
++                        // resize() drained the queue: discard those old signals.
++                        drawSemaphores.clear();
++                        acquiredSemaphore = ext.device->createCommandSemaphore();
++#endif
+                         // Texture count could've changed after resize, so new semaphores are needed.
+                         while (drawSemaphores.size() < ext.swapChain->getTextureCount()) {
+                             drawSemaphores.emplace_back(ext.device->createCommandSemaphore());
+@@ -491,7 +503,7 @@
+                     }
+                 }
+ 
+-                if (needsResize || ext.appWindow->detectWindowMoved()) {
++                if (attemptResize || ext.appWindow->detectWindowMoved()) {
+                     ext.appWindow->detectRefreshRate();
+                     ext.sharedResources->setSwapChainRate(std::min(ext.appWindow->getRefreshRate(), displayTimingRate));
+                 }
+diff --git a/tools/rt64/src/hle/rt64_rsp.cpp b/tools/rt64/src/hle/rt64_rsp.cpp
+--- a/tools/rt64/src/hle/rt64_rsp.cpp
++++ b/tools/rt64/src/hle/rt64_rsp.cpp
+@@ -1252,7 +1252,7 @@
+ 
+         // Swap the indices around if and only if front face culling is enabled.
+         if ((geometryMode & cullBothMask) == cullFrontMask) {
+-            uint8_t swap = c;
++            uint32_t swap = c;
+             c = a;
+             a = swap;
+         }
+diff --git a/tools/rt64/src/hle/rt64_workload_queue.cpp b/tools/rt64/src/hle/rt64_workload_queue.cpp
+--- a/tools/rt64/src/hle/rt64_workload_queue.cpp
++++ b/tools/rt64/src/hle/rt64_workload_queue.cpp
+@@ -21,7 +21,7 @@
+     }
+ 
+     WorkloadQueue::~WorkloadQueue() {
+-        threadsRunning = false;
++        { std::scoped_lock<std::mutex> lock(cursorMutex); threadsRunning = false; }
+         cursorCondition.notify_all();
+         idleCondition.notify_all();
+ 
+@@ -51,21 +51,17 @@
+     }
+ 
+     void WorkloadQueue::advanceToNextWorkload() {
+-        int nextWriteCursor = (writeCursor + 1) % workloads.size();
+-
+-        // Stall the thread until the barrier is lifted if we're trying to write on a workload being used by the GPU.
+-        bool waitForBarrier;
+-        do {
+-            const std::scoped_lock lock(cursorMutex);
+-            waitForBarrier = (nextWriteCursor == barrierCursor);
+-        } while (waitForBarrier);
+-
+-        // Modify the cursor and notify anything waiting on the queue.
++        // A producer must not overwrite a buffer still owned by the GPU. Sleep
++        // on the same mutex/condition as the consumer instead of busy-spinning.
+         {
+-            const std::scoped_lock lock(cursorMutex);
++            std::unique_lock<std::mutex> lock(cursorMutex);
++            const int nextWriteCursor = (writeCursor + 1) % workloads.size();
++            cursorCondition.wait(lock, [&]() {
++                return nextWriteCursor != barrierCursor || !threadsRunning;
++            });
++            if (!threadsRunning) return;
+             writeCursor = nextWriteCursor;
+         }
+-
+         cursorCondition.notify_all();
+     }
+ 
+@@ -876,8 +872,11 @@
+     }
+ 
+     void WorkloadQueue::threadAdvanceBarrier() {
+-        std::scoped_lock<std::mutex> cursorLock(cursorMutex);
+-        barrierCursor = (barrierCursor + 1) % workloads.size();
++        {
++            std::scoped_lock<std::mutex> cursorLock(cursorMutex);
++            barrierCursor = (barrierCursor + 1) % workloads.size();
++        }
++        cursorCondition.notify_all();
+     }
+ 
+     void WorkloadQueue::threadAdvanceWorkloadId(uint64_t newWorkloadId) {
+diff --git a/tools/rt64/src/render/rt64_framebuffer_renderer.cpp b/tools/rt64/src/render/rt64_framebuffer_renderer.cpp
+--- a/tools/rt64/src/render/rt64_framebuffer_renderer.cpp
++++ b/tools/rt64/src/render/rt64_framebuffer_renderer.cpp
+@@ -3,6 +3,9 @@
+ //
+ 
+ #include "rt64_framebuffer_renderer.h"
++#ifdef __ANDROID__
++#include "mobile_metrics.hpp"
++#endif
+ #ifdef __ANDROID__
+ #include "mobile_frame_coverage.hpp"
+ #include "mobile_metrics.hpp"
+@@ -470,6 +473,9 @@
+     }
+     
+     void FramebufferRenderer::submitRasterScene(RenderWorker *worker, const Framebuffer &framebuffer, RenderFramebufferStorage *fbStorage, const RasterScene &rasterScene, bool &depthState) {
++#ifdef __ANDROID__
++        uint64_t singleDraws=0,coverageDraws=0,orderedTriangles=0;
++#endif
+         InstanceDrawCall::Type previousCallType = InstanceDrawCall::Type::Unknown;
+         bool previousVertexTestZ = false;
+         const RenderPipeline *previousPipeline = nullptr;
+@@ -580,7 +586,36 @@
+                 rasterParams.screenOffset = triangles.screenOffset;
+                 worker->commandList->setGraphicsPushConstants(0, &rasterParams);
+ 
+-                drawCallTriangles(drawCall);
++#ifdef __ANDROID__
++                if (!worker->device->getCapabilities().dualSourceBlend) ++singleDraws;
++#endif
++                if (triangles.coveragePipeline != nullptr) {
++                    // Replaying the same rasterization preserves N64 coverage.
++                    // With depth writes, interleave per primitive so even
++                    // overlapping/equal-depth triangles see the original order.
++                    const bool updatesDepth = otherMode.zUpd() && otherMode.cycleType() != G_CYC_COPY;
++                    const uint32_t batch = updatesDepth ? 1 : triangles.faceCount;
++#ifdef __ANDROID__
++                    coverageDraws += updatesDepth ? triangles.faceCount : 1;
++                    orderedTriangles += updatesDepth ? triangles.faceCount : 0;
++#endif
++                    for (uint32_t face = 0; face < triangles.faceCount; face += batch) {
++                        const uint32_t count = std::min(batch, triangles.faceCount - face) * 3;
++                        const uint32_t start = triangles.indexStart + face * 3;
++                        auto drawRange = [&]() {
++                            if (drawCall.type == InstanceDrawCall::Type::IndexedTriangles)
++                                worker->commandList->drawIndexedInstanced(count, 1, start, 0, 0);
++                            else worker->commandList->drawInstanced(count, 1, start, 0);
++                        };
++                        worker->commandList->setPipeline(triangles.pipeline);
++                        drawRange();
++                        worker->commandList->setPipeline(triangles.coveragePipeline);
++                        drawRange();
++                    }
++                    previousPipeline = nullptr;
++                } else {
++                    drawCallTriangles(drawCall);
++                }
+ 
+                 // Simulate dither noise.
+                 if (triangles.postBlendDitherNoise) {
+@@ -642,6 +677,11 @@
+             }
+         }
+ 
++#ifdef __ANDROID__
++        conker::mobile::metrics.singleSourceDraws.fetch_add(singleDraws,std::memory_order_relaxed);
++        conker::mobile::metrics.coveragePasses.fetch_add(coverageDraws,std::memory_order_relaxed);
++        conker::mobile::metrics.depthOrderedTriangles.fetch_add(orderedTriangles,std::memory_order_relaxed);
++#endif
+         // Mark targets for resolve.
+         if (fbStorage->colorTarget != nullptr) {
+             fbStorage->colorTarget->markForResolve();
+@@ -1625,16 +1665,22 @@
+                     {
+                         triangles.shaderDesc = call.shaderDesc;
+ 
++                        triangles.coveragePipeline = nullptr;
+                         RasterShader *gpuShader = p.ubershadersOnly ? nullptr : p.rasterShaderCache->getGPUShader(call.shaderDesc);
+                         if (gpuShader != nullptr) {
+                             triangles.pipeline = gpuShader->pipeline.get();
++                            triangles.coveragePipeline = gpuShader->coveragePipeline.get();
+                         }
+                         else {
+-                            const bool copyMode = (call.shaderDesc.otherMode.cycleType() == G_CYC_COPY);
+-                            triangles.pipeline = rasterShaderUber->getPipeline(
+-                                !copyMode && call.shaderDesc.otherMode.zCmp() && (call.shaderDesc.otherMode.zMode() != ZMODE_DEC),
+-                                !copyMode && call.shaderDesc.otherMode.zUpd(),
+-                                (call.shaderDesc.otherMode.cvgDst() == CVG_DST_WRAP) || (call.shaderDesc.otherMode.cvgDst() == CVG_DST_SAVE));
++                            const auto om = call.shaderDesc.otherMode;
++                            const bool copyMode = om.cycleType() == G_CYC_COPY;
++                            const bool zCmp = !copyMode && om.zCmp() && om.zMode() != ZMODE_DEC;
++                            const bool zUpd = !copyMode && om.zUpd();
++                            const bool cvgAdd = om.cvgDst() == CVG_DST_WRAP || om.cvgDst() == CVG_DST_SAVE;
++                            const bool split = !p.worker->device->getCapabilities().dualSourceBlend && !copyMode && interop::Blender::usesAlphaBlend(om);
++                            const uint32_t pass = split ? (om.cvgDst() == CVG_DST_SAVE ? 3 : 1) : 0;
++                            triangles.pipeline = rasterShaderUber->getPipeline(zCmp, zUpd, cvgAdd, pass);
++                            if (pass == 1) triangles.coveragePipeline = rasterShaderUber->getPipeline(zCmp, zUpd, cvgAdd, 2);
+                         }
+                         
+                         triangles.faceCount = call.callDesc.triangleCount;
+diff --git a/tools/rt64/src/render/rt64_framebuffer_renderer_call.h b/tools/rt64/src/render/rt64_framebuffer_renderer_call.h
+--- a/tools/rt64/src/render/rt64_framebuffer_renderer_call.h
++++ b/tools/rt64/src/render/rt64_framebuffer_renderer_call.h
+@@ -33,6 +33,7 @@
+             struct {
+                 ShaderDescription shaderDesc;
+                 const RenderPipeline *pipeline;
++                const RenderPipeline *coveragePipeline;
+                 interop::float2 screenScale;
+                 interop::float2 screenOffset;
+                 RenderRect scissor;
+diff --git a/tools/rt64/src/render/rt64_raster_shader.cpp b/tools/rt64/src/render/rt64_raster_shader.cpp
+--- a/tools/rt64/src/render/rt64_raster_shader.cpp
++++ b/tools/rt64/src/render/rt64_raster_shader.cpp
+@@ -3,6 +3,19 @@
+ //
+ 
+ #include "rt64_raster_shader.h"
++#include "shaders/RasterPSDynamicColor.hlsl.spirv.h"
++#include "shaders/RasterPSDynamicColorMS.hlsl.spirv.h"
++#include "shaders/RasterPSDynamicCoverage.hlsl.spirv.h"
++#include "shaders/RasterPSDynamicCoverageMS.hlsl.spirv.h"
++#include "shaders/RasterPSSpecColor.hlsl.spirv.h"
++#include "shaders/RasterPSSpecColorMS.hlsl.spirv.h"
++#include "shaders/RasterPSSpecColorFlat.hlsl.spirv.h"
++#include "shaders/RasterPSSpecColorFlatMS.hlsl.spirv.h"
++#include "shaders/RasterPSSpecCoverage.hlsl.spirv.h"
++#include "shaders/RasterPSSpecCoverageMS.hlsl.spirv.h"
++#include "shaders/RasterPSSpecCoverageFlat.hlsl.spirv.h"
++#include "shaders/RasterPSSpecCoverageFlatMS.hlsl.spirv.h"
++
+ 
+ #include "xxHash/xxh3.h"
+ 
+@@ -68,6 +81,15 @@
+     // OptimizerCacheSPIRV
+ 
+     void OptimizerCacheSPIRV::initialize() {
++        rasterPSColor.parse(RasterPSSpecColorBlobSPIRV, std::size(RasterPSSpecColorBlobSPIRV));
++        rasterPSColorMS.parse(RasterPSSpecColorMSBlobSPIRV, std::size(RasterPSSpecColorMSBlobSPIRV));
++        rasterPSColorFlat.parse(RasterPSSpecColorFlatBlobSPIRV, std::size(RasterPSSpecColorFlatBlobSPIRV));
++        rasterPSColorFlatMS.parse(RasterPSSpecColorFlatMSBlobSPIRV, std::size(RasterPSSpecColorFlatMSBlobSPIRV));
++        rasterPSCoverage.parse(RasterPSSpecCoverageBlobSPIRV, std::size(RasterPSSpecCoverageBlobSPIRV));
++        rasterPSCoverageMS.parse(RasterPSSpecCoverageMSBlobSPIRV, std::size(RasterPSSpecCoverageMSBlobSPIRV));
++        rasterPSCoverageFlat.parse(RasterPSSpecCoverageFlatBlobSPIRV, std::size(RasterPSSpecCoverageFlatBlobSPIRV));
++        rasterPSCoverageFlatMS.parse(RasterPSSpecCoverageFlatMSBlobSPIRV, std::size(RasterPSSpecCoverageFlatMSBlobSPIRV));
++
+         rasterVS.parse(RasterVSSpecConstantBlobSPIRV, std::size(RasterVSSpecConstantBlobSPIRV));
+         rasterVSFlat.parse(RasterVSSpecConstantFlatBlobSPIRV, std::size(RasterVSSpecConstantFlatBlobSPIRV));
+         rasterPS.parse(RasterPSSpecConstantBlobSPIRV, std::size(RasterPSSpecConstantBlobSPIRV));
+@@ -92,7 +114,9 @@
+         this->device = device;
+         this->desc = desc;
+         
++        const bool singleSource = !device->getCapabilities().dualSourceBlend;
+         const bool useMSAA = (multisampling.sampleCount > 1);
++        std::unique_ptr<RenderShader> colorShader;
+         std::unique_ptr<RenderShader> vertexShader;
+         std::unique_ptr<RenderShader> pixelShader;
+ #ifdef __APPLE__
+@@ -112,6 +136,17 @@
+                 PS = useMSAA ? &optimizerCacheSPIRV->rasterPSFlatMS : &optimizerCacheSPIRV->rasterPSFlat;
+             }
+ 
++            const respv::Shader *colorPS = nullptr;
++            if (singleSource) {
++                if (desc.flags.smoothShade) {
++                    PS = useMSAA ? &optimizerCacheSPIRV->rasterPSCoverageMS : &optimizerCacheSPIRV->rasterPSCoverage;
++                    colorPS = useMSAA ? &optimizerCacheSPIRV->rasterPSColorMS : &optimizerCacheSPIRV->rasterPSColor;
++                } else {
++                    PS = useMSAA ? &optimizerCacheSPIRV->rasterPSCoverageFlatMS : &optimizerCacheSPIRV->rasterPSCoverageFlat;
++                    colorPS = useMSAA ? &optimizerCacheSPIRV->rasterPSColorFlatMS : &optimizerCacheSPIRV->rasterPSColorFlat;
++                }
++            }
++
+             thread_local std::vector<respv::SpecConstant> specConstants;
+             thread_local bool specConstantsSetup = false;
+             thread_local std::vector<uint8_t> optimizedVS;
+@@ -136,6 +171,13 @@
+ 
+             vertexShader = device->createShader(optimizedVS.data(), optimizedVS.size(), "VSMain", shaderFormat);
+             pixelShader = device->createShader(optimizedPS.data(), optimizedPS.size(), "PSMain", shaderFormat);
++            if (singleSource) {
++                thread_local std::vector<uint8_t> optimizedColor;
++                if (!respv::Optimizer::run(*colorPS, specConstants.data(), uint32_t(specConstants.size()), optimizedColor)) {
++                    throw std::runtime_error("Single-source color shader optimization failed");
++                }
++                colorShader = device->createShader(optimizedColor.data(), optimizedColor.size(), "PSMain", shaderFormat);
++            }
+         }
+         else if (shaderFormat == RenderShaderFormat::METAL) {
+ #       ifdef __APPLE__
+@@ -236,7 +278,20 @@
+         creation.specConstants = specConstants;
+ #endif
+         creation.multisampling = multisampling;
+-        pipeline = createPipeline(creation);
++        if (singleSource && creation.alphaBlend) {
++            const bool preserveCoverage = desc.otherMode.cvgDst() == CVG_DST_SAVE;
++            creation.singleSourcePass = preserveCoverage ? 3 : 1;
++            creation.pixelShader = colorShader.get();
++            pipeline = createPipeline(creation);
++            if (!preserveCoverage) {
++                creation.singleSourcePass = 2;
++                creation.alphaBlend = false;
++                creation.pixelShader = pixelShader.get();
++                coveragePipeline = createPipeline(creation);
++            }
++        } else {
++            pipeline = createPipeline(creation);
++        }
+     }
+ 
+     RasterShader::~RasterShader() { }
+@@ -333,8 +388,9 @@
+         RenderBlendDesc &targetBlend = pipelineDesc.renderTargetBlend[0];
+         if (c.alphaBlend) {
+             targetBlend.blendEnabled = true;
+-            targetBlend.srcBlend = RenderBlend::SRC1_ALPHA;
+-            targetBlend.dstBlend = RenderBlend::INV_SRC1_ALPHA;
++            const bool singleSource = c.singleSourcePass == 1 || c.singleSourcePass == 3;
++            targetBlend.srcBlend = singleSource ? RenderBlend::SRC_ALPHA : RenderBlend::SRC1_ALPHA;
++            targetBlend.dstBlend = singleSource ? RenderBlend::INV_SRC_ALPHA : RenderBlend::INV_SRC1_ALPHA;
+             targetBlend.blendOp = RenderBlendOperation::ADD;
+         }
+ 
+@@ -344,6 +400,13 @@
+             targetBlend.dstBlendAlpha = RenderBlend::ONE;
+         }
+ 
++        if (c.singleSourcePass == 1 || c.singleSourcePass == 3) {
++            targetBlend.renderTargetWriteMask = uint8_t(RenderColorWriteEnable::RED) |
++                uint8_t(RenderColorWriteEnable::GREEN) | uint8_t(RenderColorWriteEnable::BLUE);
++            if (c.singleSourcePass == 1) pipelineDesc.depthWriteEnabled = false;
++        } else if (c.singleSourcePass == 2) {
++            targetBlend.renderTargetWriteMask = uint8_t(RenderColorWriteEnable::ALPHA);
++        }
+         return c.device->createGraphicsPipeline(pipelineDesc);
+     }
+     
+@@ -441,6 +504,16 @@
+             return;
+         }
+ 
++        const bool singleSource = !device->getCapabilities().dualSourceBlend;
++        if (singleSource && shaderFormat == RenderShaderFormat::SPIRV) {
++            PSBlob = useMSAA ? RasterPSDynamicCoverageMSBlobSPIRV : RasterPSDynamicCoverageBlobSPIRV;
++            PSBlobSize = uint32_t(useMSAA ? std::size(RasterPSDynamicCoverageMSBlobSPIRV) : std::size(RasterPSDynamicCoverageBlobSPIRV));
++            const auto *colorBlob = useMSAA ? RasterPSDynamicColorMSBlobSPIRV : RasterPSDynamicColorBlobSPIRV;
++            const size_t colorSize = useMSAA ? std::size(RasterPSDynamicColorMSBlobSPIRV) : std::size(RasterPSDynamicColorBlobSPIRV);
++            singleColorShader = device->createShader(colorBlob, colorSize, "PSMain", shaderFormat);
++            fprintf(stderr, "[blend] Native dual source unavailable: exact single-source RGB/coverage passes enabled\n");
++        }
++
+         vertexShader = device->createShader(VSBlob, VSBlobSize, "VSMain", shaderFormat);
+         pixelShader = device->createShader(PSBlob, PSBlobSize, "PSMain", shaderFormat);
+ 
+@@ -467,7 +540,7 @@
+         creation.pipelineLayout = pipelineLayout.get();
+         creation.vertexShader = vertexShader.get();
+         creation.pixelShader = pixelShader.get();
+-        creation.alphaBlend = true;
++        creation.alphaBlend = !singleSource;
+         creation.culling = false;
+         creation.NoN = true;
+         creation.usesHDR = shaderLibrary->usesHDR;
+@@ -480,7 +553,20 @@
+             creation.cvgAdd = i & (1 << 2);
+ 
+             pipelineThreadCreations[threadIndex].emplace_back(creation);
+-            threadIndex = (threadIndex + 1) % threadCount;
++            if (singleSource) {
++                PipelineCreation split = creation;
++                split.singleSourcePass = 1;
++                split.alphaBlend = true;
++                split.pixelShader = singleColorShader.get();
++                pipelineThreadCreations[threadIndex].emplace_back(split);
++                split.singleSourcePass = 3;
++                pipelineThreadCreations[threadIndex].emplace_back(split);
++                split.singleSourcePass = 2;
++                split.alphaBlend = false;
++                split.pixelShader = pixelShader.get();
++                pipelineThreadCreations[threadIndex].emplace_back(split);
++            }
++            threadIndex = (threadIndex + 1) % pipelineThreadCreations.size();
+         }
+ 
+         // Spawn the threads that will compile all the pipelines.
+@@ -572,14 +658,17 @@
+         for (const PipelineCreation &creation : pipelineThreadCreations[threadIndex]) {
+             uint32_t pipelineIndex = pipelineStateIndex(creation.zCmp, creation.zUpd, creation.cvgAdd);
+ 
+-            if (pipelineIndex == 0) {
++            auto *bank = creation.singleSourcePass == 1 ? colorPipelines :
++                creation.singleSourcePass == 2 ? coveragePipelines :
++                creation.singleSourcePass == 3 ? savePipelines : pipelines;
++            if (pipelineIndex == 0 && creation.singleSourcePass == 0) {
+                 firstPipelineMutex.lock();
+-                pipelines[pipelineIndex] = RasterShader::createPipeline(creation);
++                bank[pipelineIndex] = RasterShader::createPipeline(creation);
+                 firstPipelineMutex.unlock();
+                 firstPipelineCondition.notify_all();
+             }
+             else {
+-                pipelines[pipelineIndex] = RasterShader::createPipeline(creation);
++                bank[pipelineIndex] = RasterShader::createPipeline(creation);
+             }
+         }
+     }
+@@ -594,6 +683,7 @@
+             pipelineThreadCreations.clear();
+             vertexShader.reset();
+             pixelShader.reset();
++            singleColorShader.reset();
+             pipelinesCreated = true;
+         }
+     }
+@@ -605,7 +695,8 @@
+             (uint32_t(cvgAdd)       << 2);
+     }
+ 
+-    const RenderPipeline *RasterShaderUber::getPipeline(bool zCmp, bool zUpd, bool cvgAdd) const {
+-        return pipelines[pipelineStateIndex(zCmp, zUpd, cvgAdd)].get();
++    const RenderPipeline *RasterShaderUber::getPipeline(bool zCmp, bool zUpd, bool cvgAdd, uint32_t pass) const {
++        const auto *bank = pass == 1 ? colorPipelines : pass == 2 ? coveragePipelines : pass == 3 ? savePipelines : pipelines;
++        return bank[pipelineStateIndex(zCmp, zUpd, cvgAdd)].get();
+     }
+ };
+diff --git a/tools/rt64/src/render/rt64_raster_shader.h b/tools/rt64/src/render/rt64_raster_shader.h
+--- a/tools/rt64/src/render/rt64_raster_shader.h
++++ b/tools/rt64/src/render/rt64_raster_shader.h
+@@ -36,6 +36,15 @@
+         respv::Shader rasterPSFlat;
+         respv::Shader rasterPSFlatMS;
+ 
++        respv::Shader rasterPSColor;
++        respv::Shader rasterPSColorMS;
++        respv::Shader rasterPSColorFlat;
++        respv::Shader rasterPSColorFlatMS;
++        respv::Shader rasterPSCoverage;
++        respv::Shader rasterPSCoverageMS;
++        respv::Shader rasterPSCoverageFlat;
++        respv::Shader rasterPSCoverageFlatMS;
++
+         void initialize();
+     };
+ 
+@@ -51,6 +60,9 @@
+         bool zUpd;
+         bool cvgAdd;
+         bool usesHDR;
++        // 0=normal, 1=RGB-only/no depth writes, 2=coverage+depth, 3=RGB with
++        // depth writes (CVG_DST_SAVE, where destination coverage is unchanged).
++        uint32_t singleSourcePass = 0;
+         std::vector<RenderSpecConstant> specConstants;
+         RenderMultisampling multisampling;
+     };
+@@ -64,6 +76,7 @@
+         ShaderDescription desc;
+         RenderDevice *device;
+         std::unique_ptr<RenderPipeline> pipeline;
++        std::unique_ptr<RenderPipeline> coveragePipeline;
+ 
+         RasterShader(RenderDevice *device, const ShaderDescription &desc, const RenderPipelineLayout *pipelineLayout, RenderShaderFormat shaderFormat, const RenderMultisampling &multisampling, 
+             const ShaderCompiler *shaderCompiler, const OptimizerCacheSPIRV *optimizerCacheSPIRV);
+@@ -79,6 +92,9 @@
+         static const uint64_t RasterPSLibraryHash;
+ 
+         std::unique_ptr<RenderPipeline> pipelines[8];
++        std::unique_ptr<RenderPipeline> colorPipelines[8];
++        std::unique_ptr<RenderPipeline> coveragePipelines[8];
++        std::unique_ptr<RenderPipeline> savePipelines[8];
+         std::unique_ptr<RenderPipeline> postBlendDitherNoiseAddPipeline;
+         std::unique_ptr<RenderPipeline> postBlendDitherNoiseSubPipeline;
+         std::unique_ptr<RenderPipeline> postBlendDitherNoiseSubNegativePipeline;
+@@ -90,12 +106,13 @@
+         std::vector<std::unique_ptr<std::thread>> pipelineThreads;
+         std::unique_ptr<RenderShader> vertexShader;
+         std::unique_ptr<RenderShader> pixelShader;
++        std::unique_ptr<RenderShader> singleColorShader;
+ 
+         RasterShaderUber(RenderDevice *device, RenderShaderFormat shaderFormat, const RenderMultisampling &multisampling, const ShaderLibrary *shaderLibrary, uint32_t threadCount);
+         ~RasterShaderUber();
+         void threadCreatePipelines(uint32_t threadIndex);
+         void waitForPipelineCreation();
+         uint32_t pipelineStateIndex(bool zCmp, bool zUpd, bool cvgAdd) const;
+-        const RenderPipeline *getPipeline(bool zCmp, bool zUpd, bool cvgAdd) const;
++        const RenderPipeline *getPipeline(bool zCmp, bool zUpd, bool cvgAdd, uint32_t pass = 0) const;
+     };
+ };
+diff --git a/tools/rt64/src/shaders/RasterPS.hlsl b/tools/rt64/src/shaders/RasterPS.hlsl
+--- a/tools/rt64/src/shaders/RasterPS.hlsl
++++ b/tools/rt64/src/shaders/RasterPS.hlsl
+@@ -291,7 +291,9 @@
+     , bool isFrontFace : SV_IsFrontFace
+ #endif
+     , [[vk::location(0)]] [[vk::index(0)]] out float4 pixelColor : SV_TARGET0
++#if !defined(SINGLE_SOURCE_COLOR) && !defined(SINGLE_SOURCE_COVERAGE)
+     , [[vk::location(0)]] [[vk::index(1)]] out float4 pixelAlpha : SV_TARGET1
++#endif
+ )
+ {
+ #if !defined(DYNAMIC_RENDER_PARAMS)
+@@ -307,7 +309,15 @@
+         discard;
+     }
+ 
++#if defined(SINGLE_SOURCE_COLOR)
++    // RGB pass: output the ORIGINAL blending factor, not N64 coverage. Alpha
++    // writes are disabled. A separate coverage-only pass preserves coverage.
++    pixelColor = float4(resultColor.rgb, resultAlpha.a);
++#else
+     pixelColor = resultColor;
++#endif
++#if !defined(SINGLE_SOURCE_COLOR) && !defined(SINGLE_SOURCE_COVERAGE)
+     pixelAlpha = resultAlpha;
++#endif
+ }
+ #endif
+\ No newline at end of file

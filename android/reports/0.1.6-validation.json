@@ -1,0 +1,63 @@
+{
+  "version": "0.1.6-alpha",
+  "versionCode": 7,
+  "package": "com.ylports.cbfd",
+  "apk_bytes": 20660843,
+  "apk_sha256": "05e0c1fd86aea909e30c608eaaa7d431ef29794ea1a87744e1d428caf13670c8",
+  "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+  "same_certificate_as_delivered_0_1_5": true,
+  "native_full_build": "Release arm64-v8a NDK 28.0.13004108 / API26",
+  "apk_v2_v3_and_16KiB_zip_elf_verified": true,
+  "libraries": {
+    "libmain.so": {
+      "bytes": 17356608,
+      "sha256": "c7aeb3f195b93f09340756ca3343c9cc6619478d75b9d2fe00cb84871a7fb94b",
+      "load_segment_alignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    "libSDL2.so": {
+      "bytes": 1490536,
+      "sha256": "dc257a8a80237c019a86649b1b400e0c7dfce37aed2c5dea732d79c3e0240aae",
+      "load_segment_alignment": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    "libc++_shared.so": {
+      "bytes": 1728248,
+      "sha256": "836c4dfd05a30d786fd75ff39a3f4730b3fba313d63b0fde895361e8985d7f92",
+      "load_segment_alignment": [
+        16384,
+        16384,
+        16384,
+        16384
+      ]
+    }
+  },
+  "tested": {
+    "touch_model_assertions": 155,
+    "previous_metrics_assertions": 34,
+    "synthetic_match_clip_scale_assertions": 36033,
+    "actual_RT64_math_reference_and_endpoint_assertions": 6001,
+    "synthetic_importer_cases": 42,
+    "storage_cases": 16,
+    "vulkan_surface_cases": 40,
+    "mocked_actual_plume_method_cases": 30,
+    "RT64_source_integration_assertions": 3
+  },
+  "untested": [
+    "installation/execution of 0.1.6 on a phone",
+    "Mali gameplay and FPS gain",
+    "water and tail screenshots after correction",
+    "continuous unconstrained 360-degree camera",
+    "surface loss/recovery after background"
+  ],
+  "camera": "Right touch stick maps original C inputs. NOT a native free-orbit camera.",
+  "render_scale": "Automatic 1.25x..2x based on GPU query averages with hysteresis; output aspect/resolution and game clock unchanged.",
+  "remote_branch_inspected": "8a974d88079ca44efbec2642cf52cd176adc693d",
+  "remote_branch_modified": false
+}

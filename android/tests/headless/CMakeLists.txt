@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+project(ConkerCameraProbe LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 20)
+get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+set(CONKER_RT64 OFF CACHE BOOL "" FORCE)
+add_subdirectory("${ROOT}/host" "${CMAKE_CURRENT_BINARY_DIR}/host")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(COMMAND ${Python3_EXECUTABLE} "${ROOT}/android/tools/prepare_camera_hook.py"
+ "${ROOT}/RecompiledFuncs/funcs_9.c" "${CMAKE_CURRENT_BINARY_DIR}/funcs_9_camera.c" COMMAND_ERROR_IS_FATAL ANY)
+get_target_property(GAME_SOURCES RecompiledFuncs SOURCES)
+list(FILTER GAME_SOURCES EXCLUDE REGEX "funcs_9\\.c$")
+set_property(TARGET RecompiledFuncs PROPERTY SOURCES "${GAME_SOURCES};${CMAKE_CURRENT_BINARY_DIR}/funcs_9_camera.c")
+execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/prepare_probe.py"
+ "${ROOT}/host/src/main.cpp" "${CMAKE_CURRENT_BINARY_DIR}/probe_main.cpp" COMMAND_ERROR_IS_FATAL ANY)
+get_target_property(HOST_SOURCES ConkerRecomp SOURCES)
+list(REMOVE_ITEM HOST_SOURCES "src/main.cpp")
+set_property(TARGET ConkerRecomp PROPERTY SOURCES "${HOST_SOURCES};${CMAKE_CURRENT_BINARY_DIR}/probe_main.cpp;${ROOT}/android/native/mobile_camera.cpp")
+target_include_directories(ConkerRecomp PRIVATE "${ROOT}/host/src" "${ROOT}/android/native")

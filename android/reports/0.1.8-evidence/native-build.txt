@@ -1,0 +1,6 @@
+Restored pinned dependencies and final delivered0.1.7 source.
+Baseline full ARM64 build: 802 tasks, completed.
+0.1.8 native changes and shader generation: completed.
+Final incremental Release link: BUILD_EXIT=0.
+Java/DEX, zipalign and apksigner: completed.
+No new Android execution or on-device FPS measurement.
