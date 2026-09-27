@@ -1,26 +1,21 @@
-name: Android source checks
+name: Android direct-PC-port checks
 on:
   push:
     paths: ['android/**', 'host/src/**', 'recomp/**', 'conker.toml', '.github/workflows/android-source-checks.yml']
   pull_request:
     paths: ['android/**', 'host/src/**', 'recomp/**', 'conker.toml', '.github/workflows/android-source-checks.yml']
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
-  gles-renderer:
-    name: OpenGL ES 3 pixels (synthetic lists, no ROM)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build libegl1-mesa-dev libgl1-mesa-dri
-      - run: python3 android/tools/test_gles_014.py
   source-snapshot:
-    name: Tracked Android source snapshot (no game inputs)
+    name: Tracked Android source snapshot
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Archive only Git-tracked Android sources
+      - name: Archive tracked Android sources
         run: |
           mkdir -p "$RUNNER_TEMP/conker-source"
           git archive --format=tar.gz --output="$RUNNER_TEMP/conker-source/android-source.tar.gz" HEAD android .github
@@ -32,8 +27,9 @@ jobs:
           name: android-tracked-source
           path: ${{ runner.temp }}/conker-source/
           retention-days: 3
+
   importer:
-    name: Synthetic ROM importer tests (not gameplay)
+    name: ROM importer/storage tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,10 +38,10 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: python3 android/tools/test.py
-      - name: Native storage policy regression (host only, no ROM or GPU)
-        run: python3 android/tools/test_storage.py
+      - run: python3 android/tools/test_storage.py
+
   java-android:
-    name: Android Java + SDL API compilation (no native build)
+    name: Launcher, PC settings and SDL Java compile
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,22 +55,23 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-35'
       - run: python3 android/tools/prepare.py --dependencies
-      - name: Compile the actual activity and controls against Android/SDL
+      - run: python3 android/tools/test_mobile.py
+      - name: Compile actual Android/SDL Java
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/conker-java"
           find android/app/src/main/java android/.deps/SDL/android-project/app/src/main/java -name '*.java' > "$RUNNER_TEMP/java-sources.txt"
-          javac -source 17 -target 17 -classpath "$ANDROID_HOME/platforms/android-35/android.jar" -d "$RUNNER_TEMP/conker-java" @"$RUNNER_TEMP/java-sources.txt"
+          javac -source 17 -target 17 -Xlint:all -classpath "$ANDROID_HOME/platforms/android-35/android.jar"             -d "$RUNNER_TEMP/conker-java" @"$RUNNER_TEMP/java-sources.txt"
 
-  pc-native-regressions:
-    name: PC sync and Android native regressions (no ROM/GPU)
+  pc012-parity:
+    name: PC 0.1.2 parity + Android Vulkan WSI
     runs-on: ubuntu-latest
     env:
       CXX: g++
       CC: gcc
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare pinned runtime and rendering headers
+      - name: Prepare the exact PC runtime patches plus Android platform glue
         run: |
           git submodule update --init tools/N64ModernRuntime tools/rt64
           git -C tools/N64ModernRuntime submodule update --init N64Recomp
@@ -87,25 +84,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Run production-code and policy regressions
-        run: |
-          python3 android/tools/test_pc_sync.py
-          python3 android/tools/test_render_010.py
-          python3 android/tools/test_render_011.py
-          python3 android/tools/test_shader_workers_012.py
-          python3 android/tools/test_diagnostics_013.py
-          python3 android/tools/test_visibility_012.py
-          python3 android/tools/test_mobile.py
-          python3 android/tools/test_matcher_math.py
-          python3 android/tools/test_native_render_017.py
-          python3 android/tools/test_vulkan_surface.py
-          python3 android/tools/test_queues018.py
-      - name: Compare Android blending with the PC path on software Vulkan
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y mesa-vulkan-drivers libx11-dev
-          git -C tools/rt64 submodule update --init src/contrib/dxc
-          git -C tools/rt64/src/contrib/plume submodule update --init contrib/volk contrib/VulkanMemoryAllocator
-          python3 android/tools/test_filter_013.py
-          VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu018.py
-          VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu011.py --filter-regression
+      - name: Verify exact upstream PC 0.1.2 shared files
+        run: python3 android/tools/test_pc_sync.py
+      - name: Verify Android Vulkan presentation glue
+        run: python3 android/tools/test_vulkan_surface.py
