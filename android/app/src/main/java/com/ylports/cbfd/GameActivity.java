@@ -22,7 +22,7 @@ public final class GameActivity extends SDLActivity {
     private static native void nativeForeground(boolean active);
     private static native void nativeRequestQuit();
     private static native String nativeCaptureDiagnostics();
-    @Override protected String[] getLibraries() { return new String[] {"c++_shared", "SDL2", "main"}; }
+    @Override protected String[] getLibraries() { return new String[] {"c++_shared", "SDL2", "conker_gles_core", "main"}; }
     @Override protected String getMainSharedObject() {
         // These libraries are mapped from the APK; nativeLibraryDir may have no files.
         return "libmain.so";
@@ -60,7 +60,7 @@ public final class GameActivity extends SDLActivity {
                 nativeSurface(holder.getSurface(),width,height);
                 applyRate(holder);
                 StartupDiagnostics.log("Native Surface="+width+"x"+height+"; fixed1080; displayHz="+
-                    getWindowManager().getDefaultDisplay().getRefreshRate()+"; lifecycle publish; build=texture-capture-013");
+                    getWindowManager().getDefaultDisplay().getRefreshRate()+"; lifecycle publish; build=gles-renderer-014");
                 super.surfaceChanged(holder,format,width,height);
             }
             @Override public void surfaceDestroyed(SurfaceHolder holder) {
@@ -86,7 +86,8 @@ public final class GameActivity extends SDLActivity {
     }
     @Override protected String[] getArguments() {
         return new String[] {"--rom", new File(getFilesDir(), "roms/" + RomImporter.ROM_NAME).getAbsolutePath(),
-            "--data", new File(getFilesDir(), "state").getAbsolutePath()};
+            "--data", new File(getFilesDir(), "state").getAbsolutePath(),
+            "--renderer", "opengl".equals(getIntent().getStringExtra(RendererSettings.EXTRA)) ? "opengl" : "vulkan"};
     }
     @Override protected void onCreate(Bundle state) {
         StartupDiagnostics.log("GameActivity.onCreate: before SDL");
@@ -127,12 +128,11 @@ public final class GameActivity extends SDLActivity {
         if (touch != null) touch.releaseAll();
         exitDialog = new android.app.AlertDialog.Builder(this)
             .setTitle("Conker Recompiled")
-            .setMessage("Puedes continuar, salir o cambiar la ROM.")
-            .setNeutralButton("Continuar", (dialog, which) -> Immersive.apply(this))
-            .setNegativeButton("Salir", (dialog, which) -> nativeRequestQuit())
-            .setPositiveButton("Cambiar ROM", (dialog, which) -> {
-                manageRomsAfterExit = true;
-                nativeRequestQuit();
+            .setItems(new String[]{"Continuar", "Capturar fallo gráfico", "Gráficos y ROM", "Salir"}, (dialog, which) -> {
+                if (which == 1) copyLiveDiagnostics();
+                else if (which == 2) { manageRomsAfterExit = true; nativeRequestQuit(); }
+                else if (which == 3) nativeRequestQuit();
+                Immersive.apply(this);
             }).create();
         exitDialog.show();
     }

@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 jobs:
+  gles-renderer:
+    name: OpenGL ES 3 pixels (synthetic lists, no ROM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libegl1-mesa-dev libgl1-mesa-dri
+      - run: python3 android/tools/test_gles_014.py
   source-snapshot:
     name: Tracked Android source snapshot (no game inputs)
     runs-on: ubuntu-latest

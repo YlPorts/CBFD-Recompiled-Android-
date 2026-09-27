@@ -17,6 +17,13 @@ def replace(path, before, after, count=1):
 
 
 def apply_base():
+    config = 'tools/N64ModernRuntime/ultramodern/include/ultramodern/config.hpp'
+    replace(config, '            Metal,\n            OptionCount', '            Metal,\n            OpenGL,\n            OptionCount')
+    replace(config, '            {ultramodern::renderer::GraphicsApi::Metal, "Metal"},',
+        '            {ultramodern::renderer::GraphicsApi::Metal, "Metal"},\n            {ultramodern::renderer::GraphicsApi::OpenGL, "OpenGL"},')
+    replace('tools/N64ModernRuntime/ultramodern/src/renderer_context.cpp',
+        '    case ultramodern::renderer::GraphicsApi::Metal:',
+        '    case ultramodern::renderer::GraphicsApi::OpenGL:\n        return "OpenGL ES 3";\n    case ultramodern::renderer::GraphicsApi::Metal:')
     rt64 = 'tools/rt64/CMakeLists.txt'
     replace(rt64, 'add_subdirectory(src/tools/file_to_c)', '''if (ANDROID)
     if (NOT CONKER_HOST_FILE_TO_C OR NOT EXISTS "${CONKER_HOST_FILE_TO_C}")

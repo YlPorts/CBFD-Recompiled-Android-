@@ -26,6 +26,7 @@ public final class LauncherActivity extends Activity {
         managing = getIntent().getBooleanExtra(MANAGE_ROMS, false);
         if (managing) { showImporter(); return; }
         if (StartupDiagnostics.needsRecovery()) { showInterruptedRun(); return; }
+        if (RendererSettings.needsChoice(this)) { managing = RomVersions.hasRom(romDirectory()); showImporter(); return; }
         if (RomVersions.hasRom(romDirectory())) { launch(); return; }
         showImporter();
     }
@@ -74,6 +75,15 @@ public final class LauncherActivity extends Activity {
         content.addView(status);
         content.addView(choose);
         content.addView(versions);
+        Button graphics = new Button(this);
+        graphics.setText("Gráficos: " + RendererSettings.label(this));
+        graphics.setOnClickListener(v -> RendererSettings.show(this,
+            () -> graphics.setText("Gráficos: " + RendererSettings.label(this))));
+        content.addView(graphics);
+        TextView rendererHelp = new TextView(this);
+        rendererHelp.setText("OpenGL es experimental y mantiene los FPS originales del juego. Vulkan permite interpolación. Ambos conservan tus partidas.");
+        rendererHelp.setGravity(Gravity.CENTER);
+        content.addView(rendererHelp);
         content.addView(play);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -145,7 +155,7 @@ public final class LauncherActivity extends Activity {
             else { StartupDiagnostics.acknowledge(); showImporter(); }
         });
         Button change = new Button(this);
-        change.setText("Cambiar ROM");
+        change.setText("Gráficos y ROM");
         change.setOnClickListener(v -> { managing = true; showImporter(); });
         content.addView(message);
         content.addView(copy);
@@ -154,9 +164,11 @@ public final class LauncherActivity extends Activity {
         setContentView(content);
     }
     private void launch() {
+        RendererSettings.markShown(this);
         StartupDiagnostics.beginLaunch();
         try {
-            startActivity(new Intent().setClassName(this, "com.ylports.cbfd.GameActivity"));
+            startActivity(new Intent().setClassName(this, "com.ylports.cbfd.GameActivity")
+                .putExtra(RendererSettings.EXTRA, RendererSettings.selected(this)));
             finish();
         } catch (RuntimeException | LinkageError error) {
             StartupDiagnostics.failure("No se pudo abrir GameActivity", error);

@@ -28,6 +28,7 @@ set(SDL_SHARED ON CACHE BOOL "" FORCE)
 set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/.deps/SDL" "${CMAKE_CURRENT_BINARY_DIR}/SDL")
+add_subdirectory(native/gles "${CMAKE_CURRENT_BINARY_DIR}/gles")
 add_subdirectory("${ROOT}/tools/N64ModernRuntime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
 # Apply android/tools/patch_dependencies.py before configuring this target.
 # It adapts the pinned RT64/Plume build without removing Conker microcode fixes.
@@ -76,7 +77,7 @@ add_library(ConkerGame STATIC ${FUNCS} ${HOOK_COPIES} "${GENERATED}/tlb_pages.c"
 target_include_directories(ConkerGame PRIVATE "${GENERATED}" "${ROOT}/tools/N64ModernRuntime/N64Recomp/include")
 target_compile_options(ConkerGame PRIVATE -include setjmp.h -fno-strict-aliasing
     -Wno-implicit-function-declaration -Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable)
-add_library(main SHARED native/android_host.cpp native/rt64_renderer.cpp native/mobile_camera.cpp native/mobile_frustum.cpp
+add_library(main SHARED native/android_host.cpp native/rt64_renderer.cpp native/gles_renderer.cpp native/mobile_camera.cpp native/mobile_frustum.cpp
     native/audio_output.cpp "${ROOT}/host/src/overlays.cpp"
     "${ROOT}/host/src/ultra_extras.cpp" "${ROOT}/host/src/mod_api.cpp"
     "${ROOT}/host/src/widescreen.cpp" "${ROOT}/host/src/interpolation.cpp"
@@ -88,5 +89,5 @@ target_include_directories(main PRIVATE "${ROOT}/host/src" "${GENERATED}"
     "${RT64_DIR}/src" "${RT64_DIR}/src/contrib" "${RT64_DIR}/src/contrib/plume"
     "${RT64_DIR}/src/contrib/imgui" "${RT64_DIR}/src/contrib/hlslpp/include"
     "${RT64_DIR}/src/contrib/mupen64plus-core/src/api")
-target_link_libraries(main PRIVATE ConkerGame librecomp ultramodern rt64 SDL2::SDL2 android log)
+target_link_libraries(main PRIVATE ConkerGame librecomp ultramodern rt64 conker_gles_core SDL2::SDL2 android log)
 target_link_options(main PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--threads=1")

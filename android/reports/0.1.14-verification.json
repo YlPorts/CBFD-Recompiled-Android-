@@ -1,0 +1,82 @@
+{
+  "version": "0.1.14-alpha",
+  "build": "gles-renderer-014",
+  "version_code": 15,
+  "package": "com.ylports.cbfd",
+  "source_parent": "9355c1c3061945a7afa00759bbf17bb7e35e38db",
+  "pc_commit": "48e10dce99b9de6146b1d449d8fab538bbc7c55b",
+  "gles_commit": "41c7ba273a6c9afb43c0574cf3cf5d139182d070",
+  "apk": {
+    "filename": "Conker-Recompiled-0.1.14-alpha-arm64.apk",
+    "sha256": "038f8f5b1d74a5d7d913384677486f251e3879d3e8a18c0de87f58222fe5f194",
+    "size_bytes": 26805369,
+    "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+    "signature_v2": true,
+    "signature_v3": true,
+    "libraries": [
+      {
+        "name": "lib/arm64-v8a/libmain.so",
+        "machine": 183,
+        "segment_alignments": [
+          16384,
+          16384,
+          16384
+        ],
+        "zip_alignment": 16384,
+        "sha256": "49f529618fcc99fd1aabccefb01b4b74543eece6ebbac9f654022cf43bf0b74f"
+      },
+      {
+        "name": "lib/arm64-v8a/libconker_gles_core.so",
+        "machine": 183,
+        "segment_alignments": [
+          16384,
+          16384,
+          16384
+        ],
+        "zip_alignment": 16384,
+        "sha256": "29debf5532c093af3b53687c3c541819bd69e1b1b56675ee240a4d5338a1a085"
+      },
+      {
+        "name": "lib/arm64-v8a/libSDL2.so",
+        "machine": 183,
+        "segment_alignments": [
+          16384,
+          16384,
+          16384
+        ],
+        "zip_alignment": 16384,
+        "sha256": "8516879f9ac9ee2613f446f86fcd141bd1d5ef3c64b7e978bd2b5440bebfbade"
+      },
+      {
+        "name": "lib/arm64-v8a/libc++_shared.so",
+        "machine": 183,
+        "segment_alignments": [
+          16384,
+          16384,
+          16384,
+          16384
+        ],
+        "zip_alignment": 16384,
+        "sha256": "836c4dfd05a30d786fd75ff39a3f4730b3fba313d63b0fde895361e8985d7f92"
+      }
+    ]
+  },
+  "tests": {
+    "android_arm64_release": "passed",
+    "android_java_d8": "passed",
+    "fresh_main_and_gles_bytes": "passed",
+    "gles_synthetic_640x480": "passed",
+    "gles_synthetic_2340x1080": "passed; 1440x1080 active internal color buffer",
+    "gles_private_game_probe": "140 seconds; intro/menu/3D cutscenes; no GL errors; 4005 display lists by last capture",
+    "original_game_frustum_assertions": 45800,
+    "diagnostic_retention_capture": "passed",
+    "pc_sync_and_rom_variants": "passed"
+  },
+  "limitations": [
+    "No on-device 0.1.14 measurements on SM-A155M",
+    "Water/vegetation issue not certified fixed",
+    "OpenGL uses original game frame rate, without RT64 interpolation",
+    "OpenGL outputs native Surface width by horizontal scaling",
+    "Android background/resume not device-tested"
+  ]
+}

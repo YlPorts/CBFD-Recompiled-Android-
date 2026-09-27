@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Fetch only public SDL sources. Never downloads, publishes, or replaces a ROM."""
+"""Fetch pinned public render/window sources. Never downloads or replaces a ROM."""
 import argparse
 import pathlib
 import subprocess
+from prepare_gles import prepare as prepare_gles
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SDL = ROOT / "android/.deps/SDL"
@@ -28,6 +29,7 @@ def main():
             raise SystemExit("SDL has local changes; refusing to treat it as a verified dependency.")
         print(f"SDL source ready: {git('rev-parse', 'HEAD', cwd=SDL)}")
         print("SDL C and Java sources must always come from this same checkout.")
+        prepare_gles()
     else:
         parser.print_help()
     print("SDL preparation does not generate or run the game. Use android/tools/build_apk.py after recompilation; see android/README.md.")
