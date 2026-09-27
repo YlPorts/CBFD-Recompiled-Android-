@@ -1,0 +1,36 @@
+name: Reference Vulkan tools (no game)
+on:
+  workflow_dispatch:
+  push:
+    branches: [android/0.1.8-render-recovery]
+    paths: [.github/workflows/android-reference-vulkan.yml]
+permissions:
+  contents: read
+jobs:
+  reference-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Prepare only public software Vulkan libraries
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+          mkdir -p "$RUNNER_TEMP/vulkan-reference/lib"
+          DRIVER=/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so
+          cp "$DRIVER" "$RUNNER_TEMP/vulkan-reference/lib/"
+          ldd "$DRIVER" | awk '/=> \/.* \(/ {print $3}' | while read -r lib; do
+            case "$(basename "$lib")" in libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux*) continue;; esac
+            cp -L "$lib" "$RUNNER_TEMP/vulkan-reference/lib/"
+          done
+          cp /usr/bin/vulkaninfo "$RUNNER_TEMP/vulkan-reference/"
+          printf '%s\n' '{"file_format_version":"1.0.0","ICD":{"library_path":"./lib/libvulkan_lvp.so","api_version":"1.3.0"}}' > "$RUNNER_TEMP/vulkan-reference/lvp.json"
+          dpkg-query -W mesa-vulkan-drivers vulkan-tools > "$RUNNER_TEMP/vulkan-reference/packages.txt"
+          ldd "$DRIVER" > "$RUNNER_TEMP/vulkan-reference/dependencies.txt"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/vulkan-reference.tar.gz" vulkan-reference
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reference-vulkan-libraries-only
+          path: ${{ runner.temp }}/vulkan-reference.tar.gz
+          retention-days: 2
+          compression-level: 0
