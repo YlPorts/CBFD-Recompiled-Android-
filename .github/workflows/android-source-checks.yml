@@ -100,6 +100,7 @@ jobs:
             -Itools/N64ModernRuntime/ultramodern/include
             -Itools/N64ModernRuntime/thirdparty
             -Itools/N64ModernRuntime/thirdparty/concurrentqueue
+            -Itools/N64ModernRuntime/thirdparty/miniz
             -Itools/rt64/src -Itools/rt64/src/contrib
             -Itools/rt64/src/contrib/plume -Itools/rt64/src/contrib/imgui
             -Itools/rt64/src/contrib/hlslpp/include
