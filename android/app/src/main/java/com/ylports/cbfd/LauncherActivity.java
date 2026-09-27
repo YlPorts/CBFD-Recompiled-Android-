@@ -40,7 +40,7 @@ public final class LauncherActivity extends Activity {
     private void showImporter() {
         LinearLayout content = layout(24);
         status = new TextView(this);
-        status.setText("Conker Recompiled 0.1.9\nSelecciona tu ROM USA o ZIP para empezar.");
+        status.setText("Conker Recompiled " + StartupDiagnostics.VERSION + "\nSelecciona tu ROM USA o ZIP para empezar.");
         status.setTextSize(18);
         status.setGravity(Gravity.CENTER);
         choose = new Button(this);
@@ -99,7 +99,7 @@ public final class LauncherActivity extends Activity {
                 if (isDestroyed() || isFinishing()) return;
                 available = found;
                 setBusy(false);
-                status.setText("Conker Recompiled 0.1.9\n" + current + "\nROM USA original o con cambios de textos, sonidos y gráficos.");
+                status.setText("Conker Recompiled " + StartupDiagnostics.VERSION + "\n" + current + "\nROM USA original o con cambios de textos, sonidos y gráficos.");
             });
         } catch (IOException error) { showError(error); }
     }

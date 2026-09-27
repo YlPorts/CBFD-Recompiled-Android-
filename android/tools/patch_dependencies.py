@@ -107,7 +107,7 @@ def apply_017():
 
 
 
-def main():
+def apply_018():
     # Layer 0.1.8 depends on 0.1.7. Remove only a fully matched known patch;
     # never reset a dependency or silently discard unrelated local edits.
     patch = ROOT / 'android/patches/mali-blend-surface-018.patch'
@@ -127,6 +127,25 @@ def main():
             subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
         raise
     print('0.1.8 capability-based blend, retained Android surface and queue-wakeup layer applied.')
+
+def main():
+    patch = ROOT / 'android/patches/native-1080-010.patch'
+    def check(reverse=False):
+        return subprocess.run(['git','apply',*(['--reverse'] if reverse else []),'--check',str(patch)],
+            cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode == 0
+    removed = check(True)
+    if removed:
+        subprocess.run(['git','apply','--reverse',str(patch)],cwd=ROOT,check=True)
+    try:
+        apply_018()
+        if not check():
+            raise SystemExit('0.1.10 dependencies differ; refusing to overwrite local changes.')
+        subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+    except BaseException:
+        if removed and check():
+            subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+        raise
+    print('0.1.10 VI-aware 1080-line render and lean coverage shaders applied.')
 
 if __name__ == '__main__':
     main()

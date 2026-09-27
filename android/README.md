@@ -1,4 +1,4 @@
-# Conker Recompiled Android 0.1.9-alpha
+# Conker Recompiled Android 0.1.10-alpha
 
 Integra PC **V0.1.1**, commit `48e10dce99b9de6146b1d449d8fab538bbc7c55b`, sobre el código completo de Android 0.1.8 recuperado y versionado en esta rama.
 
@@ -9,7 +9,11 @@ Integra PC **V0.1.1**, commit `48e10dce99b9de6146b1d449d8fab538bbc7c55b`, sobre 
 - Actualización del runtime, incluido el arreglo de arranque con mods de PC. Esto no añade un gestor Android de archivos `.nrm`.
 - Recompilación desde los símbolos publicados por PC; cámara orbital localizada automáticamente aunque cambie el archivo generado que la contiene.
 
-Se conservan Vulkan/RT64, ARM64, cámara táctil, Surface nativa, resolución interna 2x fija, aspecto Expand, objetivo de presentación 60 FPS, audio, rutas privadas y guardados. La APK 0.1.9 usa `com.ylports.cbfd`, versionCode 10 y el certificado original. **Compilar y verificar la firma no prueba FPS ni gráficos en el teléfono.**
+La versión 0.1.10 configura **1080 píxeles internos de alto**, calculando la escala según la VI del juego (4.5x para 240 líneas). Conserva Surface nativa y aspecto Expand: en una pantalla 2340x1080, el objetivo panorámico es 2340x1080. No usa resolución dinámica. Se mantienen Vulkan/RT64, ARM64, cámara táctil, objetivo de presentación 60 FPS, audio, rutas privadas y guardados. La APK usa `com.ylports.cbfd`, versionCode 11 y el certificado original.
+
+La pasada de cobertura elimina cálculos de color que no escribe, y evita dividir por triángulo cuando no hay dependencia de profundidad. Conserva el orden para superficies superpuestas que comparan/escriben Z. También evita compilar shaders que no usará. La prueba Vulkan por software compara esta ruta con la mezcla dual de PC. **1080p/60 FPS sostenidos y los errores visuales del juego todavía requieren una prueba en el A15.** Subir desde 2x a 4.5x aumenta aproximadamente 5.06 veces el número de píxeles; las optimizaciones no demuestran que la GPU pueda mantener 60 FPS.
+
+Para medir: juega diez minutos en la zona problemática, mantén START pulsado 1.5 segundos y pega el diagnóstico. Incluye una captura del defecto visual. El informe registra VI, Surface, tamaño de la textura presentada, tiempos CPU/GPU, FPS de render/envío y estado térmico de Android. Los FPS de envío no miden directamente lo que escanea la pantalla.
 
 El importador mantiene el tamaño de 64 MiB y admite `.z64`, `.v64`, `.n64` y ZIP con una sola ROM. La región de código `0x40..0x1A37E0` debe coincidir con USA, como en PC. Las variantes comparten las partidas existentes. Cada variante se guarda en archivos privados y ocupa 64 MiB adicionales.
 
@@ -46,6 +50,9 @@ CXX=g++ CC=gcc python3 android/tools/test_native_render_017.py --require-camera
 python3 android/tools/test_vulkan_surface.py
 CXX=g++ python3 android/tools/test_queues018.py
 python3 android/tools/test_pc_sync.py --rom conker/baserom.us.z64
+python3 android/tools/test_render_010.py
+# Requiere compilador/CMake/Ninja, DXC, cabeceras X11 y un ICD Vulkan:
+python3 android/tools/test_gpu018.py
 ```
 
-La prueba de ROM modifica únicamente copias temporales locales; no exporta datos del juego. Las pruebas de cámara usan la rutina original regenerada. CI omite las pruebas que necesitan ROM y lo informa; no declara gameplay validado. Evidencia de la entrega: [reports/0.1.9-pc-sync.md](reports/0.1.9-pc-sync.md).
+La prueba de ROM modifica únicamente copias temporales locales; no exporta datos del juego. Las pruebas de cámara usan la rutina original regenerada. CI omite las pruebas que necesitan ROM y lo informa; no declara gameplay validado. Evidencia: [0.1.10 render](reports/0.1.10-render.md), [sincronización PC](reports/0.1.9-pc-sync.md).

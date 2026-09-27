@@ -11,7 +11,7 @@ import java.util.List;
 
 /** App-private crash evidence only. No network, analytics or storage permission. */
 final class StartupDiagnostics {
-    static final String VERSION = "0.1.8-alpha";
+    static final String VERSION = "0.1.10-alpha";
     private static Context app;
 
     static void install(Context context) {
@@ -108,6 +108,11 @@ final class StartupDiagnostics {
         out.append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
             .append(" / Android ").append(Build.VERSION.RELEASE).append(" API ").append(Build.VERSION.SDK_INT)
             .append("\nABI: ").append(java.util.Arrays.toString(Build.SUPPORTED_ABIS)).append('\n');
+        if (Build.VERSION.SDK_INT >= 29) {
+            android.os.PowerManager power = (android.os.PowerManager) app.getSystemService(Context.POWER_SERVICE);
+            if (power != null) out.append("Android thermal status: ").append(power.getCurrentThermalStatus())
+                .append(" (0=normal; 1-6=increasing throttling)\n");
+        }
         for (String name : new String[]{"startup-error.txt", "startup-java.log", "last-run.log", "rt64/rt64.log", "previous-run.log"}) {
             if (file(name).isFile()) out.append("\n--- ").append(name).append(" ---\n").append(tail(file(name), 24000));
         }

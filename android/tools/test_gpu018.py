@@ -21,14 +21,18 @@ ps=(p/'shaders/RasterPS.hlsl').read_text();a=ps.rindex('#if defined(SINGLE_SOURC
 packing=ps[a:b]
 (out/'probe.hlsl').write_text('''void VSMain(in float4 p:POSITION,in float2 uv:TEXCOORD,in float4 c:COLOR,out float4 o:SV_POSITION,out float2 u:TEXCOORD,out float4 k:COLOR){o=p;u=uv;k=c;}
 void PSMain(in float4 p:SV_POSITION,in float2 uv:TEXCOORD,in float4 color:COLOR,
- [[vk::location(0)]] [[vk::index(0)]] out float4 pixelColor:SV_TARGET0) {
+ [[vk::location(0)]] [[vk::index(0)]] out float4 pixelColor:SV_TARGET0
+#if !defined(SINGLE_SOURCE_COLOR) && !defined(SINGLE_SOURCE_COVERAGE)
+ , [[vk::location(0)]] [[vk::index(1)]] out float4 pixelAlpha:SV_TARGET1
+#endif
+ ) {
  if(uv.y<0)discard;
  float4 resultColor=float4(color.rgb,uv.x);
  float4 resultAlpha=float4(1,1,1,color.a);
 '''+packing+'\n}\n')
 dxc=p/'contrib/dxc/bin/x64/dxc-linux';env=os.environ.copy();env['LD_LIBRARY_PATH']=str(p/'contrib/dxc/lib/x64')
-for filename,entry,target,define in [('probeVS','VSMain','vs_6_0','SINGLE_SOURCE_COLOR'),('probeColor','PSMain','ps_6_0','SINGLE_SOURCE_COLOR'),('probeCoverage','PSMain','ps_6_0','SINGLE_SOURCE_COVERAGE')]:
- subprocess.run([str(dxc),'-spirv','-T',target,'-E',entry,'-D',define,'-Fo',str(out/(filename+'.spv')),str(out/'probe.hlsl')],env=env,check=True)
+for filename,entry,target,defines in [('probeVS','VSMain','vs_6_0',['SINGLE_SOURCE_COLOR']),('probeColor','PSMain','ps_6_0',['SINGLE_SOURCE_COLOR']),('probeCoverage','PSMain','ps_6_0',['SINGLE_SOURCE_COVERAGE']),('probeAlpha','PSMain','ps_6_0',['SINGLE_SOURCE_COVERAGE','SINGLE_SOURCE_ALPHA_ONLY']),('probeDual','PSMain','ps_6_0',[])]:
+ subprocess.run([str(dxc),'-spirv','-T',target,'-E',entry,*[arg for define in defines for arg in ['-D',define]],'-Fo',str(out/(filename+'.spv')),str(out/'probe.hlsl')],env=env,check=True)
 shutil.copy(R/'android/tests/gpu018/blend_probe.cpp',out/'probe.cpp')
 # Test-only offscreen adaptation: SwiftShader has no Xlib WSI. No swapchain is tested here.
 backend=(pl/'plume_vulkan.cpp').read_text().replace('        VK_KHR_XLIB_SURFACE_EXTENSION_NAME,','        // Offscreen test does not create an Xlib surface.')
@@ -39,7 +43,7 @@ set(CMAKE_CXX_STANDARD 20)
 add_library(plume STATIC plume_offscreen.cpp)
 target_include_directories(plume PUBLIC "{pl}" "{pl}/contrib/volk" "{pl}/contrib/Vulkan-Headers/include" "{pl}/contrib/VulkanMemoryAllocator/include")
 add_executable(probe probe.cpp)
-target_include_directories(probe PRIVATE .)
+target_include_directories(probe PRIVATE . "{R}/android/native")
 target_compile_options(plume PRIVATE -g)
 target_compile_options(probe PRIVATE -g)
 target_link_options(probe PRIVATE -rdynamic -no-pie)

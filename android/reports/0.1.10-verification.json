@@ -1,0 +1,58 @@
+{
+  "version": "0.1.10-alpha",
+  "version_code": 11,
+  "base_android_commit": "d7c78c697781288459505e64d44e5df3fe077ec5",
+  "pc_commit": "48e10dce99b9de6146b1d449d8fab538bbc7c55b",
+  "apk": {
+    "filename": "Conker-Recompiled-0.1.10-alpha-arm64.apk",
+    "bytes": 24674923,
+    "sha256": "b3d9f7191b0c1106d88a42555f2d542eeecad6120a1bde7776716f05cd1d3118",
+    "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+    "v2": true,
+    "v3": true,
+    "zip_alignment": 16384,
+    "libraries": [
+      {
+        "name": "lib/arm64-v8a/libmain.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384
+        ]
+      },
+      {
+        "name": "lib/arm64-v8a/libSDL2.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384
+        ]
+      },
+      {
+        "name": "lib/arm64-v8a/libc++_shared.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384,
+          16384
+        ]
+      }
+    ]
+  },
+  "gpu_reference": {
+    "driver": "Mesa lavapipe 24.0.5, software",
+    "cases": 20,
+    "cpu_reference_components": 102400,
+    "pc_dual_source_components": 81920,
+    "discrepancies": 0,
+    "rgb_tolerance": 0.00784313725490196,
+    "gameplay": false
+  },
+  "policy_assertions": 96016,
+  "device_gameplay_tested": false,
+  "sustained_60fps_measured": false,
+  "configured_internal_height": 1080
+}

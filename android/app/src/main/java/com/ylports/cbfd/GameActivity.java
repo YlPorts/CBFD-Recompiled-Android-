@@ -58,7 +58,8 @@ public final class GameActivity extends SDLActivity {
             @Override public void surfaceChanged(SurfaceHolder holder,int format,int width,int height) {
                 nativeSurface(holder.getSurface(),width,height);
                 applyRate(holder);
-                StartupDiagnostics.log("Native Surface="+width+"x"+height+"; fixed2x; lifecycle publish; build=pc-v011-019");
+                StartupDiagnostics.log("Native Surface="+width+"x"+height+"; fixed1080; displayHz="+
+                    getWindowManager().getDefaultDisplay().getRefreshRate()+"; lifecycle publish; build=native1080-010");
                 super.surfaceChanged(holder,format,width,height);
             }
             @Override public void surfaceDestroyed(SurfaceHolder holder) {

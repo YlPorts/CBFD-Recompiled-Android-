@@ -28,3 +28,5 @@ __pycache__/
 /.claude/
 /.venv/
 /tools/macos/
+
+/android/build-gpu018/

@@ -83,8 +83,16 @@ jobs:
       - name: Run production-code and policy regressions
         run: |
           python3 android/tools/test_pc_sync.py
+          python3 android/tools/test_render_010.py
           python3 android/tools/test_mobile.py
           python3 android/tools/test_matcher_math.py
           python3 android/tools/test_native_render_017.py
           python3 android/tools/test_vulkan_surface.py
           python3 android/tools/test_queues018.py
+      - name: Compare Android blending with the PC path on software Vulkan
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y mesa-vulkan-drivers libx11-dev
+          git -C tools/rt64 submodule update --init src/contrib/dxc
+          git -C tools/rt64/src/contrib/plume submodule update --init contrib/volk contrib/VulkanMemoryAllocator
+          VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp*.json' -print -quit)" python3 android/tools/test_gpu018.py

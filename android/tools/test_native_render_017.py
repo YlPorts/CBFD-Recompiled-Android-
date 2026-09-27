@@ -17,9 +17,9 @@ with tempfile.TemporaryDirectory(prefix='conker-017-') as td:
     java=(R/'android/app/src/main/java/com/ylports/cbfd/GameActivity.java').read_text()
     native=(R/'android/native/rt64_renderer.cpp').read_text()
     assert 'setFixedSize' not in java and 'RenderExtent' not in java and 'GameSurface' not in java
-    assert 'resolutionMultiplier = 2.0' in native and 'AdaptiveResolution' not in native and '.sample(' not in native
+    assert 'resolutionMultiplier = conker::mobile::resolution_scale(240)' in native and 'AdaptiveResolution' not in native and '.sample(' not in native
     assert 'mask|=BITS[CU]' not in (R/'android/app/src/main/java/com/ylports/cbfd/TouchLayout.java').read_text()
-    print('PASS fixed2x/native-Surface/no-C-remapping source guards')
+    print('PASS fixed1080/native-Surface/no-C-remapping source guards')
     s=None
     try: s=camera_source(R/'RecompiledFuncs')
     except ValueError: pass

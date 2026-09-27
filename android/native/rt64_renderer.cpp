@@ -7,6 +7,7 @@
 #include <exception>
 #include <chrono>
 #include "mobile_metrics.hpp"
+#include "mobile_render_policy.hpp"
 #include "mobile_camera.hpp"
 #include "surface_lifecycle.hpp"
 #include "librecomp/game.hpp"
@@ -40,8 +41,16 @@ class AndroidRenderer final : public RendererContext {
             average(sample.gpuUs-last_metrics.gpuUs,sample.gpuSamples-last_metrics.gpuSamples),
             average(sample.renderUs-last_metrics.renderUs,sample.renders-last_metrics.renders), average(dl_us,dl_count),
             average(sample.matchUs-last_metrics.matchUs,sample.matches-last_metrics.matches),
-            static_cast<unsigned long long>(sample.boundsFallbacks-last_metrics.boundsFallbacks), app->userConfig.resolutionMultiplier);
+            static_cast<unsigned long long>(sample.boundsFallbacks-last_metrics.boundsFallbacks), get_resolution_scale());
         auto& m=conker::mobile::metrics;
+        const auto vi = m.viSize.load(std::memory_order_relaxed);
+        const auto surface = m.surfaceSize.load(std::memory_order_relaxed);
+        const auto texture = m.presentedSize.load(std::memory_order_relaxed);
+        std::fprintf(stderr,"[resolution] vi=%ux%u surface=%ux%u colorTexture=%ux%u internalHeightTarget=%u scale=%.3f gpuSamples=%llu\n",
+            unsigned(vi >> 32), unsigned(vi), unsigned(surface >> 32), unsigned(surface),
+            unsigned(texture >> 32), unsigned(texture),
+            conker::mobile::internalHeight, get_resolution_scale(),
+            (unsigned long long)(sample.gpuSamples-last_metrics.gpuSamples));
         auto pairs=m.matchPairs.load(),avoided=m.matchPairsAvoided.load(),rejected=m.meshRejected.load();
         auto behind=m.boundsBehind.load(),clipped=m.boundsClipped.load();
         std::fprintf(stderr,"[perf-detail] matchPairs=%llu avoidedPairs=%llu meshRejected=%llu behindBounds=%llu clippedBounds=%llu\n",
@@ -49,7 +58,7 @@ class AndroidRenderer final : public RendererContext {
             (unsigned long long)(behind-lastBehind),(unsigned long long)(clipped-lastClipped));
         lastPairs=pairs;lastAvoided=avoided;lastRejected=rejected;lastBehind=behind;lastClipped=clipped;
         const auto camera=conker::camera::counters();
-        std::fprintf(stderr,"[render-detail] modifyXY=%llu modifyZ=%llu inheritedEdits=%llu mergedEdits=%llu cameraHooks=%llu cameraAllowed=%llu cameraUpdates=%llu cameraBlocked=%llu fullWidthClears=%llu quality=fixed2x\n",
+        std::fprintf(stderr,"[render-detail] modifyXY=%llu modifyZ=%llu inheritedEdits=%llu mergedEdits=%llu cameraHooks=%llu cameraAllowed=%llu cameraUpdates=%llu cameraBlocked=%llu fullWidthClears=%llu quality=fixed1080\n",
             (unsigned long long)modifyXY,(unsigned long long)modifyZ,(unsigned long long)modifyClones,(unsigned long long)modifyMerged,
             (unsigned long long)camera.hooks,(unsigned long long)camera.allowed,(unsigned long long)camera.updates,(unsigned long long)camera.blocked,
             (unsigned long long)m.edgeClears.load(std::memory_order_relaxed));
@@ -116,7 +125,7 @@ private:
         // same worker/queue and spends battery even between useful frames.
         app->userConfig.idleWorkActive = false;
         app->userConfig.resolution = U::Resolution::Manual;
-        app->userConfig.resolutionMultiplier = 2.0;
+        app->userConfig.resolutionMultiplier = conker::mobile::resolution_scale(240);
         app->userConfig.downsampleMultiplier = 1;
         app->userConfig.aspectRatio = U::AspectRatio::Expand;
         app->userConfig.extAspectRatio = U::AspectRatio::Manual;
@@ -142,7 +151,7 @@ private:
         }
         if (setup_result != SetupResult::Success) { app->end(); app.reset(); return; }
         app->setFullScreen(true);
-        std::fprintf(stderr, "[mobile] Fixed internal=2x; native Surface; adaptive resolution OFF; GPU idle work OFF\n");
+        std::fprintf(stderr, "[mobile] Fixed internal height=1080; VI-aware scaling; native Surface; adaptive resolution OFF; GPU idle work OFF\n");
         metrics_start = Clock::now();
         std::fprintf(stderr, "[renderer] Vulkan ready; fullscreen/Expand; target presentation=60\n");
     }
@@ -189,7 +198,7 @@ public:
         return app ? app->presentQueue->ext.sharedResources->swapChainRate : 0;
     }
     float get_resolution_scale() const override {
-        return app ? static_cast<float>(app->userConfig.resolutionMultiplier) : 1.f;
+        return app ? float(conker::mobile::metrics.verticalScaleMilli.load(std::memory_order_relaxed)) / 1000.0f : 1.f;
     }
 };
 }

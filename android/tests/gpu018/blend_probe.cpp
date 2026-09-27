@@ -1,6 +1,7 @@
 // Real Vulkan raster readback. Pipeline-creation method and output packing are
 // extracted from the production sources by test_gpu018.py, not rewritten here.
 #include "production_pipeline.hpp"
+#include "mobile_render_policy.hpp"
 #include "plume_vulkan.h"
 #include <fstream>
 #include <execinfo.h>
@@ -27,6 +28,10 @@ int main(int argc,char**argv){std::signal(SIGSEGV,[](int){void* f[32];int n=back
  auto vs=device->createShader(vb.data(),vb.size(),"VSMain",RenderShaderFormat::SPIRV);
  auto rgb=device->createShader(cb.data(),cb.size(),"PSMain",RenderShaderFormat::SPIRV);
  auto coverage=device->createShader(ab.data(),ab.size(),"PSMain",RenderShaderFormat::SPIRV);
+ auto alphaBytes=read(std::string(argv[1])+"/probeAlpha.spv");
+ auto alphaCoverage=device->createShader(alphaBytes.data(),alphaBytes.size(),"PSMain",RenderShaderFormat::SPIRV);
+ auto dualBytes=read(std::string(argv[1])+"/probeDual.spv");
+ auto dual=device->getCapabilities().dualSourceBlend ? device->createShader(dualBytes.data(),dualBytes.size(),"PSMain",RenderShaderFormat::SPIRV) : nullptr;
  RenderPipelineLayoutDesc ld;ld.allowInputLayout=true;auto layout=device->createPipelineLayout(ld);
  constexpr unsigned W=32,H=32;auto color=device->createTexture(RenderTextureDesc::ColorTarget(W,H,RenderFormat::R8G8B8A8_UNORM));
  auto depth=device->createTexture(RenderTextureDesc::DepthTarget(W,H,RenderFormat::D32_FLOAT));
@@ -34,7 +39,7 @@ int main(int argc,char**argv){std::signal(SIGSEGV,[](int){void* f[32];int n=back
  auto readback=device->createBuffer(RenderBufferDesc::ReadbackBuffer(W*H*4));
  auto depthReadback=device->createBuffer(RenderBufferDesc::ReadbackBuffer(W*H*4));
  auto quant=[](float x){return int(std::round(std::clamp(x,0.f,1.f)*255));};
- unsigned checks=0,cases=0,errors=0;
+ unsigned checks=0,cases=0,errors=0,pcChecks=0;
  std::mt19937 rng(181818);
  for(int mode=0;mode<5;++mode)for(int zcmp=0;zcmp<2;++zcmp)for(int zupd=0;zupd<2;++zupd){
   // 0=coverage clamp,1=add/wrap,2=save,3=opaque,4=zero-alpha translucent
@@ -56,13 +61,13 @@ int main(int argc,char**argv){std::signal(SIGSEGV,[](int){void* f[32];int n=back
   const RenderVertexBufferView views[]={{positions.get(),unsigned(pos.size()*4)},{texcoords.get(),unsigned(uv.size()*4)},{vertexColors.get(),unsigned(col.size()*4)}};
   RT64::PipelineCreation c{};c.device=device.get();c.pipelineLayout=layout.get();c.vertexShader=vs.get();c.pixelShader=alpha?rgb.get():coverage.get();c.alphaBlend=alpha;c.culling=false;c.NoN=false;c.zCmp=zcmp;c.zUpd=zupd;c.cvgAdd=add;c.usesHDR=false;c.singleSourcePass=alpha?(save?3:1):0;
   auto colorPipeline=RT64::RasterShader::createPipeline(c);
-  c.pixelShader=coverage.get();c.alphaBlend=false;c.singleSourcePass=2;c.cvgAdd=add;auto coveragePipeline=RT64::RasterShader::createPipeline(c);
+  c.pixelShader=alphaCoverage.get();c.alphaBlend=false;c.singleSourcePass=2;c.cvgAdd=add;auto coveragePipeline=RT64::RasterShader::createPipeline(c);
   cmd->begin();cmd->barriers(RenderBarrierStage::GRAPHICS,RenderTextureBarrier(color.get(),RenderTextureLayout::COLOR_WRITE));cmd->barriers(RenderBarrierStage::GRAPHICS,RenderTextureBarrier(depth.get(),RenderTextureLayout::DEPTH_WRITE));
   cmd->setFramebuffer(fb.get());cmd->clearColor(0,RenderColor(.2f,.4f,.6f,3.f/255));cmd->clearDepth(true,1.f);
   cmd->setGraphicsPipelineLayout(layout.get());cmd->setViewports(RenderViewport(0,0,W,H));cmd->setScissors(RenderRect(0,0,W,H));cmd->setVertexBuffers(0,views,3,RT64::RasterInputSlots);
   if(!alpha||save){cmd->setPipeline(colorPipeline.get());cmd->drawInstanced(triangles.size()*3,1,0,0);}
   else{
-   unsigned batch=zupd?1:triangles.size();
+   unsigned batch=conker::mobile::coverage_batch(triangles.size(),zupd,zcmp);
    for(unsigned first=0;first<triangles.size();first+=batch){cmd->setPipeline(colorPipeline.get());cmd->drawInstanced(batch*3,1,first*3,0);cmd->setPipeline(coveragePipeline.get());cmd->drawInstanced(batch*3,1,first*3,0);}
   }
   cmd->barriers(RenderBarrierStage::COPY,RenderTextureBarrier(color.get(),RenderTextureLayout::COPY_SOURCE));cmd->barriers(RenderBarrierStage::COPY,RenderTextureBarrier(depth.get(),RenderTextureLayout::COPY_SOURCE));
@@ -83,8 +88,26 @@ int main(int argc,char**argv){std::signal(SIGSEGV,[](int){void* f[32];int n=back
   }
   auto got=(const unsigned char*)readback->map();auto zd=(const float*)depthReadback->map();
   for(unsigned i=0;i<W*H;++i){for(int k=0;k<4;++k){++checks;if(std::abs(int(got[i*4+k])-expected[k])>2){if(errors++<8)std::cerr<<"case "<<mode<<zcmp<<zupd<<" channel "<<k<<" got="<<int(got[i*4+k])<<" expected="<<expected[k]<<"\n";}}++checks;if(std::abs(zd[i]-expectedZ)>1e-5f){if(errors++<8)std::cerr<<"depth mismatch "<<zd[i]<<" expected="<<expectedZ<<"\n";}}
+  std::vector<unsigned char> androidPixels(got,got+W*H*4);
   readback->unmap();depthReadback->unmap();++cases;
+  // Same production pipeline factory, now the desktop dual-source path.
+  if(dual) {
+   c.singleSourcePass=0;c.alphaBlend=alpha;c.cvgAdd=add||save;c.pixelShader=dual.get();
+   auto pcPipeline=RT64::RasterShader::createPipeline(c);
+   cmd->begin();cmd->barriers(RenderBarrierStage::GRAPHICS,RenderTextureBarrier(color.get(),RenderTextureLayout::COLOR_WRITE));cmd->barriers(RenderBarrierStage::GRAPHICS,RenderTextureBarrier(depth.get(),RenderTextureLayout::DEPTH_WRITE));
+   cmd->setFramebuffer(fb.get());cmd->clearColor(0,RenderColor(.2f,.4f,.6f,3.f/255));cmd->clearDepth(true,1.f);
+   cmd->setGraphicsPipelineLayout(layout.get());cmd->setViewports(RenderViewport(0,0,W,H));cmd->setScissors(RenderRect(0,0,W,H));cmd->setVertexBuffers(0,views,3,RT64::RasterInputSlots);
+   cmd->setPipeline(pcPipeline.get());cmd->drawInstanced(triangles.size()*3,1,0,0);
+   cmd->barriers(RenderBarrierStage::COPY,RenderTextureBarrier(color.get(),RenderTextureLayout::COPY_SOURCE));
+   region.imageSubresource.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+   vkCmdCopyImageToBuffer(static_cast<VulkanCommandList*>(cmd.get())->vk,static_cast<VulkanTexture*>(color.get())->vk,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,static_cast<VulkanBuffer*>(readback.get())->vk,1,&region);
+   cmd->end();q->executeCommandLists(commands,1,nullptr,0,nullptr,0,fence.get());q->waitForCommandFence(fence.get());
+   auto pc=(const unsigned char*)readback->map();
+   for(unsigned i=0;i<W*H*4;++i){++pcChecks;if(std::abs(int(pc[i])-androidPixels[i])>2){if(errors++<8)std::cerr<<"PC/Android blend mismatch\n";}}
+   readback->unmap();
+  }
  }
  std::cout<<"GPU probe: "<<cases<<" overlap/depth/coverage cases, "<<checks<<" components, "<<errors<<" discrepancies (RGB UNORM tolerance 2/255)\n";
+ std::cout<<"Desktop dual-source / Android split-pass GPU comparison: "<<pcChecks<<" components"<<(dual?"\n":" (SKIP: device lacks dual source)\n");
  return errors?1:0;
 }catch(std::exception&e){std::cerr<<e.what()<<"\n";return 2;}}
