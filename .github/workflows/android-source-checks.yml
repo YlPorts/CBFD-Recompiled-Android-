@@ -8,6 +8,23 @@ on:
 permissions:
   contents: read
 jobs:
+  source-snapshot:
+    name: Tracked Android source snapshot (no game inputs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive only Git-tracked Android sources
+        run: |
+          mkdir -p "$RUNNER_TEMP/conker-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/conker-source/android-source.tar.gz" HEAD android .github
+          git rev-parse HEAD > "$RUNNER_TEMP/conker-source/commit.txt"
+          cd "$RUNNER_TEMP/conker-source"
+          sha256sum android-source.tar.gz > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-tracked-source
+          path: ${{ runner.temp }}/conker-source/
+          retention-days: 3
   importer:
     name: Synthetic ROM importer tests (not gameplay)
     runs-on: ubuntu-latest
