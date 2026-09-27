@@ -84,7 +84,8 @@ def main() -> None:
     for f in libs.values():
         if not f.is_file(): p.error(f'Real native library missing: {f}; no launcher-only APK is produced.')
     main_bytes = libs['libmain.so'].read_bytes()
-    for marker in (b'pc-012-direct', b'Java_com_ylports_cbfd_GameActivity_nativeInput',\n                   b'PC 0.1.2 RT64', b'Java_com_ylports_cbfd_GameActivity_nativeRequestQuit'):
+    for marker in (b'pc-012-direct', b'Java_com_ylports_cbfd_GameActivity_nativeInput',
+                   b'PC 0.1.2 RT64', b'Java_com_ylports_cbfd_GameActivity_nativeRequestQuit'):
         if marker not in main_bytes:
             p.error('This release requires the direct PC 0.1.2 Android engine; an older Android engine cannot be relabeled.')
     stage = ANDROID/'build-package'
