@@ -8,13 +8,14 @@ import org.json.JSONObject;
 
 final class LauncherMods {
     static final class Mod {
-        final String id,name,description,version;
+        final String id,name,description,version,file;
         final boolean enabled,toggleable,defaultEnabled,customGamemode;
         Mod(JSONObject o){
             id=o.optString("id");
             name=o.optString("name",id);
             description=o.optString("description","");
             version=o.optString("version","");
+            file=o.optString("file","");
             enabled=o.optBoolean("enabled");
             toggleable=o.optBoolean("toggleable");
             defaultEnabled=o.optBoolean("defaultEnabled");
