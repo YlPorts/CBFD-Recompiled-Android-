@@ -3,6 +3,10 @@
 // Uses the APIs of the pinned RT64 and ultramodern dependencies.
 #include <algorithm>
 #include <memory>
+#include <cstdio>
+#include <exception>
+#include "librecomp/game.hpp"
+#include "rt64_storage.hpp"
 #include "hle/rt64_application.h"
 #include "ultramodern/ultramodern.hpp"
 
@@ -12,9 +16,29 @@ class AndroidRenderer final : public RendererContext {
     std::unique_ptr<RT64::Application> app;
     uint8_t dmem[0x1000]{}, imem[0x1000]{}, header[0x40]{};
     unsigned int mi = 0, dpc[8]{};
+    bool first_display_list = true;
+    bool first_screen_update = true;
     static void interrupt() {}
 public:
     AndroidRenderer(uint8_t* rdram, WindowHandle window) {
+        chosen_api = GraphicsApi::Vulkan;
+        setup_result = SetupResult::GraphicsDeviceNotFound;
+        // This constructor runs on ultramodern's graphics thread, not SDL_main.
+        // Keep exceptions inside this thread so its readiness semaphore is signalled.
+        try {
+            initialize(rdram, window);
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "[renderer] RT64 initialization exception: %s\n", error.what());
+            app.reset();
+            setup_result = SetupResult::GraphicsDeviceNotFound;
+        } catch (...) {
+            std::fprintf(stderr, "[renderer] Unknown RT64 initialization exception\n");
+            app.reset();
+            setup_result = SetupResult::GraphicsDeviceNotFound;
+        }
+    }
+private:
+    void initialize(uint8_t* rdram, WindowHandle window) {
         RT64::Application::Core core{};
         core.window = window;
         core.checkInterrupts = interrupt;
@@ -40,8 +64,10 @@ public:
         core.VI_X_SCALE_REG = &vi->VI_X_SCALE_REG;
         core.VI_Y_SCALE_REG = &vi->VI_Y_SCALE_REG;
         RT64::ApplicationConfiguration config{};
-        config.useConfigurationFile = false;
+        conker::android::configure_rt64_storage(config, recomp::get_config_path());
+        std::fprintf(stderr, "[renderer] RT64 dataPath=%s; detectDataPath=false\n", config.dataPath.c_str());
         app = std::make_unique<RT64::Application>(core, config);
+        std::fprintf(stderr, "[renderer] RT64 constructed; starting Vulkan setup\n");
         using U = RT64::UserConfiguration;
         app->userConfig.graphicsAPI = U::GraphicsAPI::Vulkan;
         app->userConfig.developerMode = false;
@@ -61,7 +87,9 @@ public:
         app->enhancementConfig.presentation.mode = RT64::EnhancementConfiguration::Presentation::Mode::PresentEarly;
         chosen_api = GraphicsApi::Vulkan;
         using R = RT64::Application::SetupResult;
-        switch (app->setup(0)) {
+        const R result = app->setup(0);
+        std::fprintf(stderr, "[renderer] RT64 setup result=%d (0=Success)\n", static_cast<int>(result));
+        switch (result) {
             case R::Success: setup_result = SetupResult::Success; break;
             case R::DynamicLibrariesNotFound: setup_result = SetupResult::DynamicLibrariesNotFound; break;
             case R::InvalidGraphicsAPI: setup_result = SetupResult::InvalidGraphicsAPI; break;
@@ -70,7 +98,9 @@ public:
         }
         if (setup_result != SetupResult::Success) { app.reset(); return; }
         app->setFullScreen(true);
+        std::fprintf(stderr, "[renderer] Vulkan ready; fullscreen/Expand; target presentation=60\n");
     }
+public:
     bool valid() override { return app != nullptr && setup_result == SetupResult::Success; }
     bool update_config(const GraphicsConfig&, const GraphicsConfig&) override { return false; }
     void enable_instant_present() override {
@@ -78,6 +108,10 @@ public:
         app->updateEnhancementConfig();
     }
     void send_dl(const OSTask* task) override {
+        if (first_display_list) {
+            std::fprintf(stderr, "[renderer] First Conker display list received\n");
+            first_display_list = false;
+        }
         app->state->rsp->reset();
         app->interpreter->loadUCodeGBI(task->t.ucode & 0x3FFFFFF, task->t.ucode_data & 0x3FFFFFF, true);
         app->processDisplayLists(app->core.RDRAM, task->t.data_ptr & 0x3FFFFFF, 0, true);
@@ -89,7 +123,13 @@ public:
         app->state->rdp->fillRect(0, 0, 320 << 2, 240 << 2);
         app->state->fullSync(); app->state->listProcessEnd();
     }
-    void update_screen() override { app->updateScreen(); }
+    void update_screen() override {
+        if (first_screen_update) {
+            std::fprintf(stderr, "[renderer] First VI update received\n");
+            first_screen_update = false;
+        }
+        app->updateScreen();
+    }
     void shutdown() override { if (app) { app->end(); app.reset(); } }
     uint32_t get_display_framerate() const override {
         return app ? app->presentQueue->ext.sharedResources->swapChainRate : 0;

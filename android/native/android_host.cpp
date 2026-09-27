@@ -17,6 +17,7 @@
 #include "ultramodern/ultramodern.hpp"
 #include "conker.hpp"
 #include "mobile_profile.hpp"
+#include "rt64_storage.hpp"
 
 extern "C" void recomp_entrypoint(uint8_t*, recomp_context*);
 RspExitReason conker_audio_ucode(uint8_t*, uint32_t);
@@ -145,8 +146,12 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         setvbuf(stderr, nullptr, _IOLBF, 0);
         dup2(fileno(stderr), STDOUT_FILENO);
         setvbuf(stdout, nullptr, _IOLBF, 0);
-        std::ofstream(state / "running.marker") << "Conker Android 0.1.1-alpha\n";
-        std::fprintf(stderr, "[startup] Conker Android 0.1.1-alpha ARM64; target=60; aspect=Expand; internal=2x\n");
+        std::ofstream(state / "running.marker") << "Conker Android 0.1.3-alpha\n";
+        std::fprintf(stderr, "[startup] Conker Android 0.1.3-alpha ARM64; target=60; aspect=Expand; internal=2x\n");
+        // Validate storage on SDL_main before spawning RT64's graphics thread.
+        // This uses --data from Android getFilesDir(), never HOME or /data.
+        const auto renderer_path = conker::android::rt64_data_path(state);
+        std::fprintf(stderr, "[startup] RT64 private storage ready: %s\n", renderer_path.c_str());
         recomp::register_config_path(state);
         ultramodern::renderer::set_graphics_config(mobile_profile());
         recomp::GameEntry game{};
@@ -175,7 +180,7 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         char* args[] = {program, flag, name, nullptr};
         recomp::Configuration cfg{};
         cfg.argc = 3; cfg.argv = args;
-        cfg.project_version = recomp::Version{0, 1, 0};
+        cfg.project_version = recomp::Version{0, 1, 3};
         cfg.rsp_callbacks.get_rsp_microcode = rsp;
         cfg.audio_callbacks = {conker::audio::queue_samples, conker::audio::get_frames_remaining, conker::audio::set_frequency};
         cfg.renderer_callbacks.create_render_context = create_android_renderer;

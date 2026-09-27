@@ -1,0 +1,61 @@
+{
+  "version": "0.1.3-alpha",
+  "versionCode": 4,
+  "package": "com.ylports.cbfd",
+  "minSdk": 26,
+  "targetSdk": 35,
+  "apk_bytes": 20628075,
+  "apk_sha256": "4cfd95dc63c87828b9834b55c8d5adc6572a039ab6ba9858d5b5e93666f41e93",
+  "signing_certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+  "same_signer_as_012": true,
+  "libraries": {
+    "libmain.so": {
+      "bytes": 17318856,
+      "sha256": "1655f776031bda6b17e41e46f0e2bbb3c4e3f4ae6fef15251f774de68da75edd",
+      "pt_load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_012": true
+    },
+    "libSDL2.so": {
+      "bytes": 1490536,
+      "sha256": "27364f454c28e798d8b89c9cb0aadd304de7d1a4aa0cbc668c4e05deac6d6329",
+      "pt_load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_012": true
+    },
+    "libc++_shared.so": {
+      "bytes": 1728248,
+      "sha256": "836c4dfd05a30d786fd75ff39a3f4730b3fba313d63b0fde895361e8985d7f92",
+      "pt_load_alignments": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "changed_from_012": false
+    }
+  },
+  "validated": [
+    "Full C++ Release build and link, Android NDK 28.0.13004108 / arm64-v8a",
+    "42 synthetic importer tests",
+    "16 native storage policy tests on host",
+    "Pinned RT64 UserPaths old/new resolution on host",
+    "Java/DEX compilation",
+    "APK signature v2/v3, same signer as 0.1.2",
+    "16 KiB ELF and APK alignment, SDL/JNI entries"
+  ],
+  "not_validated": [
+    "New APK install/launch on physical device",
+    "RT64 Vulkan setup or gameplay after this fix on Mali-G57",
+    "60 FPS, sound, controls, save and thermal behavior on phone"
+  ],
+  "root_cause": "RT64 ApplicationConfiguration.detectDataPath remained true despite useConfigurationFile=false; constructor attempted /data/.rt64 and aborted with permission denied before Vulkan setup",
+  "fix": "Use explicit canonical getFilesDir()/state/rt64; detectDataPath=false; preflight storage before native threads; keep errors within graphics constructor; add startup milestones",
+  "public_source_parent": "f94a867731f44dd2011210fa42fa647300e1a1c2"
+}

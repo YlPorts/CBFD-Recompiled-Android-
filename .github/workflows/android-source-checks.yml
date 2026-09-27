@@ -35,6 +35,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: python3 android/tools/test.py
+      - name: Native storage policy regression (host only, no ROM or GPU)
+        run: python3 android/tools/test_storage.py
   java-android:
     name: Android Java + SDL API compilation (no native build)
     runs-on: ubuntu-latest
