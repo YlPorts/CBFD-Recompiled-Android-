@@ -237,23 +237,57 @@ public final class LauncherActivity extends Activity {
     }
 
     private void showMods(){
+        final ProgressDialog progress=ProgressDialog.show(this,"Mods","Scanning PC 0.1.2 mods…",true,false);
+        worker.submit(()->{
+            try{
+                java.util.ArrayList<LauncherMods.Mod> mods=LauncherMods.list(this);
+                runOnUiThread(()->{
+                    progress.dismiss();
+                    String[] items=new String[mods.size()+1];
+                    items[0]="Add Mod (.nrm)";
+                    for(int i=0;i<mods.size();i++){
+                        LauncherMods.Mod mod=mods.get(i);
+                        items[i+1]=(mod.enabled?"✓ ":"○ ")+mod.name+
+                            (mod.version.isEmpty()?"":" · "+mod.version);
+                    }
+                    new AlertDialog.Builder(this).setTitle("Mods")
+                        .setItems(items,(dialog,which)->{
+                            if(which==0){pick(PICK_MOD);return;}
+                            LauncherMods.Mod mod=mods.get(which-1);
+                            String details=(mod.description.isEmpty()?"":mod.description+"\n\n")+
+                                "ID: "+mod.id+
+                                (mod.version.isEmpty()?"":"\nVersion: "+mod.version)+
+                                "\nState: "+(mod.enabled?"Enabled":"Disabled")+
+                                (mod.customGamemode?"\nCustom game mode":"");
+                            new AlertDialog.Builder(this).setTitle(mod.name)
+                                .setMessage(details)
+                                .setPositiveButton(mod.enabled?"Disable":"Enable",(d,w)->{
+                                    boolean state=LauncherMods.setEnabled(this,mod.id,!mod.enabled);
+                                    Toast.makeText(this,state?"Enabled":"Disabled",Toast.LENGTH_SHORT).show();
+                                    showMods();
+                                })
+                                .setNeutralButton("Remove",(d,w)->removeModFile(mod.id))
+                                .setNegativeButton("Close",null).show();
+                        }).setNegativeButton("Close",null).show();
+                });
+            }catch(Exception error){
+                runOnUiThread(()->{progress.dismiss();showError(error);});
+            }
+        });
+    }
+
+    private void removeModFile(String modId){
+        // Let the PC scanner resolve IDs on the next scan; filenames are deliberately
+        // not assumed to equal mod_id. Offer file removal only when there is one .nrm
+        // whose filename stem exactly matches the id, otherwise leave it untouched.
         File dir=modsDirectory();
-        File[] files=dir.listFiles((d,n)->n.toLowerCase(java.util.Locale.ROOT).endsWith(".nrm"));
-        if(files==null)files=new File[0];
-        Arrays.sort(files,(a,b)->a.getName().compareToIgnoreCase(b.getName()));
-        final File[] installed=files;
-        String[] items=new String[installed.length+1];
-        items[0]="Add Mod (.nrm)";
-        for(int i=0;i<installed.length;i++)items[i+1]=installed[i].getName();
-        new AlertDialog.Builder(this).setTitle("Mods").setItems(items,(dialog,which)->{
-            if(which==0){pick(PICK_MOD);return;}
-            File mod=installed[which-1];
-            new AlertDialog.Builder(this).setTitle(mod.getName())
-                .setMessage("Mods are scanned by the same librecomp mod system as PC 0.1.2. New mods follow their manifest default and existing enable/order state is kept in mods.json.")
-                .setPositiveButton("Remove",(d,w)->{
-                    if(mod.delete())Toast.makeText(this,"Mod removed",Toast.LENGTH_SHORT).show();
-                }).setNegativeButton("Close",null).show();
-        }).setNegativeButton("Close",null).show();
+        File exact=new File(dir,modId+".nrm");
+        if(exact.isFile()&&exact.delete()){
+            Toast.makeText(this,"Mod removed",Toast.LENGTH_SHORT).show();
+            showMods();
+        }else{
+            Toast.makeText(this,"Disable the mod here; remove its .nrm with Android's file manager if its filename differs from its ID.",Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showError(Exception error){
