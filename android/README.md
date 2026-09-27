@@ -1,4 +1,4 @@
-# Conker Recompiled Android 0.1.14-alpha
+# Conker Recompiled Android 0.1.15-alpha
 
 Integra PC **V0.1.1**, commit `48e10dce99b9de6146b1d449d8fab538bbc7c55b`, sobre el código completo de Android 0.1.8 recuperado y versionado en esta rama.
 
@@ -8,6 +8,16 @@ Integra PC **V0.1.1**, commit `48e10dce99b9de6146b1d449d8fab538bbc7c55b`, sobre 
 - Añadir, conservar y seleccionar versiones de ROM desde **Atrás → Gráficos y ROM**. La partida termina y guarda antes de abrir el selector. El arranque normal sigue entrando directamente al juego.
 - Actualización del runtime, incluido el arreglo de arranque con mods de PC. Esto no añade un gestor Android de archivos `.nrm`.
 - Recompilación desde los símbolos publicados por PC; cámara orbital localizada automáticamente aunque cambie el archivo generado que la contiene.
+
+## Vulkan Mali-G57 en 0.1.15
+
+Las dos capturas comparativas de 0.1.14 mantienen la geometría transparente dentro de rangos `clipW` muy parecidos y las texturas registradas siguen siendo válidas, mientras cambian alfa y hashes de las llamadas transparentes. Eso hace menos probable que la desaparición del agua sea únicamente un descarte por frustum; no demuestra por sí solo cuál es el fallo final en el driver.
+
+En Vulkan, los dispositivos ARM cuyo nombre contiene **Mali-G57** usan ahora la ruta RGB/cobertura de una sola fuente que ya existía para GPUs sin `dualSrcBlend`, incluso si el driver anuncia esa función. La capacidad anunciada se conserva en el diagnóstico como `dualSrcBlendReported`, mientras `dualSrcBlendEffective` muestra la ruta realmente elegida. El cambio está limitado a vendor ARM `0x13B5` + `Mali-G57`; otras GPU mantienen la selección anterior.
+
+La ruta alternativa conserva el color, alfa, cobertura y profundidad mediante las pasadas de compatibilidad ya probadas contra la mezcla de PC. **No reduce la resolución, no activa DRS, no cambia la lógica del juego y no modifica OpenGL ES.** En algunos materiales transparentes puede requerir pasadas adicionales, así que su impacto de rendimiento en el Mali-G57 debe medirse en el teléfono.
+
+La desaparición del agua todavía necesita validación física en el SM-A155M. En un diagnóstico Vulkan correcto de esta versión se espera `maliG57Compat=1`, `dualSrcBlendReported=1` si el driver continúa anunciándolo y `dualSrcBlendEffective=0`. Detalles: [informe 0.1.15](reports/0.1.15-mali-blend.md).
 
 ## Selección de renderizador en 0.1.14
 
@@ -26,7 +36,7 @@ Se corrigieron un arranque con buffer de profundidad de altura cero, la detecci�
 
 Para capturar la escena problemática, usa **Atrás → Capturar fallo gráfico** con el agua visible y repite cuando desaparezca. El informe conserva ambas capturas. En Vulkan incluye los estados de dibujo; en OpenGL incluye el motor real, la resolución, las listas procesadas y el ritmo de envío. OpenGL no informa un tiempo GPU que no mide. También sigue disponible la pulsación larga de START.
 
-La APK conserva `com.ylports.cbfd` y el certificado original; versionCode **15**. Las licencias y referencias de fuentes están en `assets/licenses/` dentro de la APK. Detalles y límites de verificación: [informe 0.1.14](reports/0.1.14-opengl.md).
+La APK conserva `com.ylports.cbfd` y el certificado original; en 0.1.15 usa versionCode **16**. Las licencias y referencias de fuentes están en `assets/licenses/` dentro de la APK. Detalles y límites de verificación: [informe 0.1.14](reports/0.1.14-opengl.md).
 
 ## Cambios conservados de versiones anteriores
 
