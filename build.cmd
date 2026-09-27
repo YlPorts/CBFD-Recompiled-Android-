@@ -61,6 +61,7 @@ rem A pull can move a patched tool to another commit, which its patch would bloc
 call :reset_if_moved tools/N64Recomp
 call :reset_if_moved tools/N64ModernRuntime
 call :reset_if_moved tools/rt64
+call :reset_rmlui_if_moved
 git submodule update --init --recursive || exit /b 1
 
 echo.
@@ -68,6 +69,9 @@ echo ==^> Patching the tools
 call :apply_patch tools/N64Recomp recomp/n64recomp.patch || exit /b 1
 call :apply_patch tools/N64ModernRuntime recomp/n64modernruntime.patch || exit /b 1
 call :apply_patch tools/rt64 recomp/rt64.patch || exit /b 1
+rem RmlUi's fix for GCC 15 and later (see build.sh). MSVC doesn't need it, but the patched
+rem file is the same on every system.
+call :apply_patch tools/RecompFrontend/recompui/lib/RmlUi recomp/rmlui.patch || exit /b 1
 
 echo.
 echo ==^> Building the recompiler
@@ -120,5 +124,24 @@ if not "%WANT%"=="%HAVE%" (
     echo   %~1 moved to another commit: resetting it ^(its patch is applied again below^).
     git -C "%~1" reset --hard -q
     git -C "%~1" clean -fdq
+)
+exit /b 0
+
+rem RmlUi is RecompFrontend's submodule, so it moves when either of them does.
+:reset_rmlui_if_moved
+set "RMLUI=tools/RecompFrontend/recompui/lib/RmlUi"
+if not exist "%RMLUI%/.git" exit /b 0
+set "WANT="
+set "HAVE="
+set "WANT_RMLUI="
+set "HAVE_RMLUI="
+for /f "tokens=3" %%c in ('git ls-tree HEAD tools/RecompFrontend') do set "WANT=%%c"
+for /f %%c in ('git -C tools/RecompFrontend rev-parse HEAD') do set "HAVE=%%c"
+for /f "tokens=3" %%c in ('git -C tools/RecompFrontend/recompui/lib ls-tree HEAD RmlUi') do set "WANT_RMLUI=%%c"
+for /f %%c in ('git -C "%RMLUI%" rev-parse HEAD') do set "HAVE_RMLUI=%%c"
+if not "%WANT% %WANT_RMLUI%"=="%HAVE% %HAVE_RMLUI%" (
+    echo   %RMLUI% moved to another commit: resetting it ^(its patch is applied again below^).
+    git -C "%RMLUI%" reset --hard -q
+    git -C "%RMLUI%" clean -fdq
 )
 exit /b 0
