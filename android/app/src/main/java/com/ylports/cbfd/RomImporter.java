@@ -3,6 +3,8 @@ package com.ylports.cbfd;
 import java.io.*;
 import java.nio.file.*;
 import java.security.*;
+import java.util.Locale;
+import java.util.zip.*;
 
 /** Streaming N64 byte-order conversion; never trusts a filename or content URI. */
 public final class RomImporter {
@@ -12,15 +14,73 @@ public final class RomImporter {
     private RomImporter() {}
 
     public static File importRom(InputStream input, File directory) throws IOException {
-        return importValidated(input, directory, ROM_SIZE, ROM_SHA1);
+        return importContainerValidated(input, directory, ROM_SIZE, ROM_SHA1);
     }
 
-    // Package-private so synthetic test fixtures need no copyrighted game input.
+    // Package-private so synthetic tests need no copyrighted game data.
+    static File importContainerValidated(InputStream input, File directory, long size, String hash) throws IOException {
+        if (input == null) throw new IOException("No se pudo abrir la ROM.");
+        PushbackInputStream source = new PushbackInputStream(new BufferedInputStream(input, 65536), 4);
+        byte[] prefix = new byte[4];
+        int count = 0;
+        while (count < 4) {
+            int value = source.read();
+            if (value < 0) break;
+            prefix[count++] = (byte) value;
+        }
+        source.unread(prefix, 0, count);
+        if (count != 4 || prefix[0] != 'P' || prefix[1] != 'K' || prefix[2] != 3 || prefix[3] != 4) {
+            return importValidated(source, directory, size, hash);
+        }
+        Path prepared = null;
+        int entries = 0;
+        long otherBytes = 0;
+        try (ZipInputStream zip = new ZipInputStream(source)) {
+            byte[] discard = new byte[8192];
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (++entries > 128) throw new IOException("El ZIP contiene demasiados archivos.");
+                String name = entry.getName().toLowerCase(Locale.ROOT);
+                boolean rom = !entry.isDirectory() && (name.endsWith(".z64") || name.endsWith(".n64") || name.endsWith(".v64"));
+                if (rom) {
+                    if (prepared != null) throw new IOException("El ZIP contiene varias ROMs. Importa solo una.");
+                    if (entry.getSize() >= 0 && entry.getSize() != size) throw new IOException("La ROM dentro del ZIP no tiene el tamaño correcto.");
+                    prepared = prepare(zip, directory, size, hash);
+                } else {
+                    int read;
+                    while ((read = zip.read(discard)) != -1) {
+                        if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Importación cancelada.");
+                        otherBytes += read;
+                        if (otherBytes > 8L * 1024 * 1024) throw new IOException("El ZIP contiene demasiados datos ajenos a la ROM.");
+                    }
+                }
+                // Reading every entry to EOF also verifies its CRC. Never extract entry paths.
+                zip.closeEntry();
+            }
+            if (prepared == null) throw new IOException("El ZIP no contiene una ROM .z64, .v64 o .n64.");
+            return commit(prepared, directory);
+        } finally {
+            if (prepared != null) Files.deleteIfExists(prepared);
+        }
+    }
+
     static File importValidated(InputStream input, File directory, long size, String expectedHash) throws IOException {
+        Path prepared = prepare(input, directory, size, expectedHash);
+        try { return commit(prepared, directory); }
+        finally { Files.deleteIfExists(prepared); }
+    }
+
+    private static File commit(Path prepared, File directory) throws IOException {
+        Path destination = directory.toPath().resolve(ROM_NAME);
+        Files.move(prepared, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        return destination.toFile();
+    }
+
+    private static Path prepare(InputStream input, File directory, long size, String expectedHash) throws IOException {
         if (input == null) throw new IOException("No se pudo abrir la ROM.");
         Files.createDirectories(directory.toPath());
         Path temporary = Files.createTempFile(directory.toPath(), ".rom-", ".tmp");
-        Path destination = directory.toPath().resolve(ROM_NAME);
+        boolean valid = false;
         try {
             MessageDigest digest;
             try { digest = MessageDigest.getInstance("SHA-1"); }
@@ -35,11 +95,10 @@ public final class RomImporter {
             if (count != size || !hex(digest.digest()).equals(expectedHash)) {
                 throw new IOException("ROM no compatible. Necesitas Conker's Bad Fur Day USA sin modificar.");
             }
-            // A failed import must never destroy a previously working ROM.
-            Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            return destination.toFile();
+            valid = true;
+            return temporary;
         } finally {
-            Files.deleteIfExists(temporary);
+            if (!valid) Files.deleteIfExists(temporary);
         }
     }
 
@@ -68,7 +127,7 @@ public final class RomImporter {
                     if (magic == 0x80371240) order = 0; // z64
                     else if (magic == 0x37804012) order = 1; // v64
                     else if (magic == 0x40123780) order = 2; // n64
-                    else throw new IOException("No es una ROM N64. Si es un ZIP, extrae el archivo .z64 primero.");
+                    else throw new IOException("No es una ROM N64 compatible.");
                 }
                 for (int i = 0; i < whole; i += 4) {
                     if (order == 1) { swap(buffer, i, i + 1); swap(buffer, i + 2, i + 3); }

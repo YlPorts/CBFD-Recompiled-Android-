@@ -7,3 +7,11 @@ local.properties
 *.apk
 *.aab
 .deps/
+
+.host/
+build-native/
+build-package/
+out/
+*.jks
+*.keystore
+__pycache__/

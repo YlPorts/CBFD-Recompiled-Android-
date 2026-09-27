@@ -29,15 +29,18 @@ set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/.deps/SDL" "${CMAKE_CURRENT_BINARY_DIR}/SDL")
 add_subdirectory("${ROOT}/tools/N64ModernRuntime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
-# Native dependency integration is still WIP: the pinned desktop RT64 build needs
-# Android host shader-tool / file-dialog / Vulkan loader adaptations. Keep its
-# Conker microcode patch; do not replace it with an older unpatched renderer.
+# Apply android/tools/patch_dependencies.py before configuring this target.
+# It adapts the pinned RT64/Plume build without removing Conker microcode fixes.
 set(RT64_STATIC ON CACHE BOOL "" FORCE)
 set(RT64_SDL_WINDOW_VULKAN ON CACHE BOOL "" FORCE)
 set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_DICTBUILDER OFF CACHE BOOL "" FORCE)
 set(PLUME_SDL_VULKAN_ENABLED ON CACHE BOOL "" FORCE)
 add_compile_definitions(HLSL_CPU RT64_SDL_WINDOW_VULKAN PLUME_SDL_VULKAN_ENABLED)
 set(RT64_DIR "${ROOT}/tools/rt64")
+add_library(nfd STATIC native/nfd_android.cpp)
+target_include_directories(nfd PUBLIC "${RT64_DIR}/src/contrib/nativefiledialog-extended/src/include")
+set(CONKER_HOST_FILE_TO_C "${CMAKE_CURRENT_SOURCE_DIR}/.host/file_to_c" CACHE FILEPATH "Host shader conversion tool")
 add_subdirectory("${RT64_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/rt64")
 file(GLOB FUNCS CONFIGURE_DEPENDS "${GENERATED}/funcs_*.c")
 if(NOT FUNCS)
@@ -52,7 +55,7 @@ add_library(main SHARED native/android_host.cpp native/rt64_renderer.cpp
     "${ROOT}/host/src/ultra_extras.cpp" "${ROOT}/host/src/mod_api.cpp"
     "${ROOT}/host/src/widescreen.cpp" "${GENERATED}/rsp/audio_ucode.cpp")
 target_compile_definitions(main PRIVATE CONKER_RT64)
-target_compile_options(main PRIVATE -fno-strict-aliasing)
+target_compile_options(main PRIVATE -fno-strict-aliasing -fms-extensions)
 target_include_directories(main PRIVATE "${ROOT}/host/src" "${GENERATED}"
     "${ROOT}/tools/N64ModernRuntime/N64Recomp/include"
     "${RT64_DIR}/src" "${RT64_DIR}/src/contrib" "${RT64_DIR}/src/contrib/plume"

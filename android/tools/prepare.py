@@ -30,7 +30,7 @@ def main():
         print("SDL C and Java sources must always come from this same checkout.")
     else:
         parser.print_help()
-    print("This does not generate the game or finish the RT64 Android port. See android/README.md.")
+    print("SDL preparation does not generate or run the game. Use android/tools/build_apk.py after recompilation; see android/README.md.")
 
 if __name__ == "__main__":
     main()

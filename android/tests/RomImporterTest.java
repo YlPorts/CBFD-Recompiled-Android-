@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.util.*;
+import java.util.zip.*;
 import java.util.stream.Stream;
 
 /** No ROM is included or needed: every fixture below is synthetic. */
@@ -63,6 +64,19 @@ public final class RomImporterTest {
             require(paths.noneMatch(p -> p.getFileName().toString().startsWith(".rom-")), "Leaked temporary import");
         }
     }
+    private static byte[] zip(String[] names, byte[][] entries) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream out = new ZipOutputStream(bytes)) {
+            for (int i=0; i<names.length; ++i) {
+                ZipEntry entry = new ZipEntry(names[i]);
+                entry.setMethod(ZipEntry.STORED);
+                entry.setSize(entries[i].length);
+                CRC32 crc = new CRC32(); crc.update(entries[i]); entry.setCrc(crc.getValue());
+                out.putNextEntry(entry); out.write(entries[i]); out.closeEntry();
+            }
+        }
+        return bytes.toByteArray();
+    }
     public static void main(String[] args) throws Exception {
         byte[] data = fixture(131084); // crosses two 64KiB conversion buffers
         for (int order = 0; order < 3; order++) {
@@ -115,6 +129,47 @@ public final class RomImporterTest {
                     @Override public int read() throws IOException { throw new IOException("provider failed"); }
                 };
                 fails(() -> RomImporter.importValidated(broken, directory.toFile(), data.length, sha(data)));
+                noTemporaryFiles(directory);
+            });
+            for (int order=0; order<3; ++order) {
+                final int format=order;
+                test("ZIP import byte order="+order, () -> {
+                    byte[] archive=zip(new String[]{"folder/Conker."+new String[]{"z64","v64","n64"}[format]}, new byte[][]{ordered(data,format)});
+                    RomImporter.importContainerValidated(fragmented(archive, 31, true), directory.toFile(), data.length, sha(data));
+                    require(Arrays.equals(Files.readAllBytes(directory.resolve(RomImporter.ROM_NAME)), data), "Wrong ZIP import");
+                    noTemporaryFiles(directory);
+                });
+            }
+            test("ZIP ignores extra text and never extracts paths", () -> {
+                byte[] archive=zip(new String[]{"../../note.txt","../../conker.z64"}, new byte[][]{"note".getBytes(),data});
+                RomImporter.importContainerValidated(new ByteArrayInputStream(archive), directory.toFile(), data.length, sha(data));
+                noTemporaryFiles(directory);
+            });
+            test("ZIP multiple ROMs rejected without losing previous", () -> {
+                byte[] archive=zip(new String[]{"a.z64","b.z64"}, new byte[][]{data,data});
+                fails(() -> RomImporter.importContainerValidated(new ByteArrayInputStream(archive), directory.toFile(), data.length, sha(data)));
+                require(Arrays.equals(Files.readAllBytes(directory.resolve(RomImporter.ROM_NAME)), data), "Lost previous after ambiguous ZIP");
+                noTemporaryFiles(directory);
+            });
+            test("ZIP missing ROM rejected", () -> {
+                byte[] archive=zip(new String[]{"readme.txt"}, new byte[][]{"read me".getBytes()});
+                fails(() -> RomImporter.importContainerValidated(new ByteArrayInputStream(archive), directory.toFile(), data.length, sha(data)));
+                noTemporaryFiles(directory);
+            });
+            test("ZIP corrupted CRC rejected", () -> {
+                byte[] archive=zip(new String[]{"a.z64"}, new byte[][]{data});
+                archive[14] ^= 1;
+                fails(() -> RomImporter.importContainerValidated(new ByteArrayInputStream(archive), directory.toFile(), data.length, sha(data)));
+                noTemporaryFiles(directory);
+            });
+            test("ZIP wrong ROM size rejected", () -> {
+                byte[] archive=zip(new String[]{"a.z64"}, new byte[][]{Arrays.copyOf(data,data.length-4)});
+                fails(() -> RomImporter.importContainerValidated(new ByteArrayInputStream(archive), directory.toFile(), data.length, sha(data)));
+                noTemporaryFiles(directory);
+            });
+            test("ZIP truncated body rejected", () -> {
+                byte[] archive=zip(new String[]{"a.z64"}, new byte[][]{data});
+                fails(() -> RomImporter.importContainerValidated(new ByteArrayInputStream(Arrays.copyOf(archive,64)), directory.toFile(), data.length, sha(data)));
                 noTemporaryFiles(directory);
             });
             test("null stream rejected", () -> fails(() -> RomImporter.importValidated(null, directory.toFile(), data.length, sha(data))));

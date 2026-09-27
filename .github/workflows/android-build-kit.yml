@@ -1,9 +1,6 @@
 name: Android ROM-free build kit
 on:
   workflow_dispatch:
-  push:
-    branches: [android/direct-boot-60fps]
-    paths: [.github/workflows/android-build-kit.yml]
 permissions:
   contents: read
 jobs:
@@ -51,22 +48,4 @@ jobs:
           name: cbfd-source-kit
           path: ${{ runner.temp }}/output/cbfd-source-kit.tar.gz
           retention-days: 7
-          compression-level: 0
-  toolchain:
-    name: Local Android toolchain preparation (no game)
-    runs-on: ubuntu-22.04
-    timeout-minutes: 25
-    steps:
-      - name: Install the requested Android toolchain
-        run: |
-          sdkmanager 'ndk;28.0.13004108' 'platforms;android-35' 'build-tools;35.0.0'
-      - name: Archive the local compilation tools
-        run: |
-          mkdir -p "$RUNNER_TEMP/output"
-          tar -C "$ANDROID_HOME" -czf "$RUNNER_TEMP/output/cbfd-android-toolchain.tar.gz" ndk/28.0.13004108 platforms/android-35 build-tools/35.0.0 licenses
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cbfd-android-toolchain
-          path: ${{ runner.temp }}/output/cbfd-android-toolchain.tar.gz
-          retention-days: 1
           compression-level: 0

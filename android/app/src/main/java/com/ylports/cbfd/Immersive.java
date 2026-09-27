@@ -8,11 +8,12 @@ final class Immersive {
     static void apply(Activity activity) {
         Window window = activity.getWindow();
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        WindowManager.LayoutParams attributes = window.getAttributes();
+        attributes.preferredRefreshRate = 60.0f;
         if (Build.VERSION.SDK_INT >= 28) {
-            WindowManager.LayoutParams attributes = window.getAttributes();
             attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-            window.setAttributes(attributes);
         }
+        window.setAttributes(attributes);
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false);
             WindowInsetsController controls = window.getInsetsController();

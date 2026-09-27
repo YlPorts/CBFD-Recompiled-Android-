@@ -3,7 +3,7 @@
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application android:label="Conker Recompiled" android:theme="@style/AppTheme"
-        android:allowBackup="false" android:hasCode="true" android:supportsRtl="true">
+        android:extractNativeLibs="false" android:allowBackup="false" android:hasCode="true" android:supportsRtl="true">
         <activity android:name=".LauncherActivity" android:exported="true"
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode">

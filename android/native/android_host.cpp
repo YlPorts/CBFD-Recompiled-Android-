@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <unistd.h>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -45,7 +47,8 @@ void error_box(const char* text) {
 }
 void* create_gfx() {
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
-    SDL_SetHint(SDL_HINT_ANDROID_SEPARATE_MOUSE_AND_TOUCH, "1");
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         throw std::runtime_error(SDL_GetError());
     }
@@ -57,6 +60,7 @@ ultramodern::renderer::WindowHandle create_window(void*) {
     game_window = SDL_CreateWindow("Conker Recompiled", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
         mode.w, mode.h, SDL_WINDOW_VULKAN | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!game_window) throw std::runtime_error(SDL_GetError());
+    std::fprintf(stderr, "[startup] SDL Vulkan window %dx%d\n", mode.w, mode.h);
     return game_window;
 }
 void pump(void*) {
@@ -139,6 +143,10 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         std::filesystem::current_path(state);
         std::freopen((state / "last-run.log").c_str(), "w", stderr);
         setvbuf(stderr, nullptr, _IOLBF, 0);
+        dup2(fileno(stderr), STDOUT_FILENO);
+        setvbuf(stdout, nullptr, _IOLBF, 0);
+        std::ofstream(state / "running.marker") << "Conker Android 0.1.1-alpha\n";
+        std::fprintf(stderr, "[startup] Conker Android 0.1.1-alpha ARM64; target=60; aspect=Expand; internal=2x\n");
         recomp::register_config_path(state);
         ultramodern::renderer::set_graphics_config(mobile_profile());
         recomp::GameEntry game{};
@@ -155,9 +163,11 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         game.entrypoint = recomp_entrypoint;
         game.on_init_callback = on_init;
         game.thread_create_callback = on_thread;
+        std::fprintf(stderr, "[startup] Registering Conker and overlays\n");
         recomp::register_game(game);
         conker::register_overlays();
         conker::register_mod_exports();
+        std::fprintf(stderr, "[startup] Validating imported ROM\n");
         if (recomp::select_rom(rom, game_id) != recomp::RomValidationError::Good) {
             throw std::runtime_error("ROM incompatible: usa Conker's Bad Fur Day USA sin modificar.");
         }
@@ -172,7 +182,11 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         cfg.gfx_callbacks = {create_gfx, create_window, pump};
         cfg.input_callbacks = {poll_input, get_input, rumble, conker::get_connected_device_info};
         cfg.error_handling_callbacks = {error_box};
+        std::fprintf(stderr, "[startup] Starting native runtime\n");
         recomp::start(cfg);
+        std::fprintf(stderr, "[shutdown] Runtime finished; save thread joined\n");
+        std::error_code remove_error;
+        std::filesystem::remove(state / "running.marker", remove_error);
         if (controller) { SDL_GameControllerClose(controller); controller = nullptr; }
         if (game_window) { SDL_DestroyWindow(game_window); game_window = nullptr; }
         SDL_Quit();

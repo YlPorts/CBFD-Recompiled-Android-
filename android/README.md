@@ -1,102 +1,69 @@
-# Conker Android — inicio del port, no versión jugable
+# Conker Recompiled Android — 0.1.1-alpha
 
-**Estado: código de integración en desarrollo. No hay una APK jugable validada.**
-Esta carpeta empieza el port nativo del repositorio PC en el commit
-`96d2ae4b18dd241131f233465475b23d7171af68`. No contiene un emulador alternativo,
-un juego de demostración, una ROM ni código de juego generado a partir de una ROM.
+Port nativo ARM64 de la recompilación de Conker, con RT64/Vulkan. Primera APK completa compilada y firmada; **el arranque, el audio, los controles, el guardado y el rendimiento en un teléfono siguen sin comprobarse**. Una compilación correcta no demuestra 60 FPS ni compatibilidad con todos los drivers.
 
-## Experiencia objetivo
+## Funcionamiento implementado
 
-Abrir la aplicación, importar una ROM propia de Conker USA y entrar al juego.
-Las siguientes aperturas usan la copia privada. Sin menú de gráficos, sin selector
-FPS y sin instalación manual de drivers. El código fija el objetivo de presentación
-RT64 en 60 FPS y la relación de aspecto en Expand, con pantalla horizontal inmersiva.
-Esto es **un objetivo configurado, no una medición de rendimiento**. No modifica
-la velocidad de la lógica del juego ni garantiza 60 FPS en ningún dispositivo.
+Al abrir, selecciona una ROM USA propia o un ZIP que contenga exactamente una ROM. Se normaliza `.z64`, `.v64` o `.n64`, se comprueban los 67,108,864 bytes y el SHA-1 `4cbadd3c4e0729dec46af64ad018050eada4f47a`, y se almacena una copia privada. Las aperturas siguientes arrancan directamente, sin menú de ajustes.
 
-La resolución interna inicial es 2x la original para reducir coste GPU; se presenta
-sobre toda la pantalla, sin imponer una resolución interna de 1080p. El escenario
-3D usa el ancho disponible y el HUD conserva una zona legible de hasta 16:9.
+El perfil interno fija presentación objetivo de 60 FPS, Vulkan, modo horizontal inmersivo, relación de aspecto `Expand` y resolución interna 2x de la original. No se cambia el reloj de la lógica del juego. La resolución interna 2x **no significa renderizado interno a 1080p**. El HUD conserva una zona segura 16:9. Se reutilizan los parches de Conker para sprites, transiciones y pantalla ancha. El fondo de pausa sigue teniendo las limitaciones del parche de PC.
 
-## Lo que está escrito
+Los controles táctiles se conectan al host mediante JNI; también se lee un mando SDL. Tras una interrupción no limpia aparece una pantalla de recuperación con **Copiar diagnóstico** y **Volver a entrar**, no opciones gráficas. Un cierre forzado por Android también puede dejar esa marca; no prueba por sí solo un fallo del motor.
 
-- Importación mediante el selector de documentos Android: `.z64`, `.v64` y `.n64`.
-  Convierte el orden de bytes, comprueba tamaño y SHA-1 completos, y reemplaza la
-  copia privada solo después de validarla. Una importación fallida no borra la anterior.
-- Lanzador de una sola acción y arranque directo; guardados en almacenamiento privado.
-- Actividad SDL en proceso `:game`, controles táctiles multitáctiles, mando, pantalla
-  inmersiva y puente JNI. El cierre espera al hilo SDL antes de terminar ese proceso.
-- Host que registra el juego, TLB, FR=1, CIC, EEPROM y RSP de Conker; adaptador RT64
-  sin RecompFrontend; salida de audio sin depender del menú de volumen de PC.
-- Proyecto Gradle/CMake arm64, validación del sello de generación y pruebas del
-  importador. El proyecto no ofrece un target de APK con un motor simulado.
+## Verificación realizada
 
-## Pruebas y límites actuales
+- ROM USA proporcionada: tamaño y SHA-1 correctos; importación del ZIP real comprobada localmente.
+- 42 pruebas sintéticas del importador: aprobadas. Cubren los tres órdenes de bytes, lecturas fragmentadas, cancelación, CRC ZIP incorrecto, entradas múltiples y conservación de la copia anterior ante errores.
+- Código intermedio: `RecompiledFuncs/` generado correctamente (127 archivos). La comparación de `.init`, `.game` y `.debugger` con la ROM arrojó cero palabras distintas.
+- Compilación nativa Release con Android NDK 28.0.13004108, `arm64-v8a`, API mínima 26: completada, incluido RT64, Plume, SDL, runtime, juego y microcódigo de audio.
+- Java compilado contra Android API 35 y las clases SDL 2.32.10 del mismo checkout nativo; conversión DEX completada.
+- APK con `libmain.so`, `libSDL2.so` y `libc++_shared.so`; entradas SDL/JNI presentes. Firma v2/v3 y alineación ZIP/segmentos ELF de 16 KiB verificadas.
+- **No ejecutado en dispositivo Android. No medidos FPS ni temperatura.** Compatibilidad gráfica Mali/Adreno y comportamiento al pausar/reanudar pendientes de una prueba real.
 
-`python3 android/tools/test.py` compila el importador con JDK 17+ y ejecuta **33
-pruebas sintéticas**, sin una ROM. Comprueba tres órdenes de bytes, lecturas fragmentadas
-y vacías, límites, interrupciones, integridad y reemplazo seguro. También comprueba
-que los XML estén bien formados. Estas pruebas no ejecutan Android, SDL, Vulkan o Conker.
+El archivo `build-report.json` registra la huella de la APK y el alcance de las pruebas, no un benchmark.
 
-El workflow `Android source checks` repite esas pruebas y comprueba por separado
-la compilación Java contra el SDK Android 35 y SDL 2.32.10. No publica ninguna APK.
-Un resultado verde de ese workflow **no valida la compilación C++ ni el juego**.
+## Compilar con una ROM propia
 
-## Pendiente antes de ofrecer una APK
+Linux x86-64, JDK 17 o posterior, Python 3, CMake, Ninja, compilador C++ de host, Android SDK con plataforma 35, build-tools 35.0.0 y NDK 28.0.13004108.
 
-1. Completar las adaptaciones Android de las dependencias nativas: RT64/Plume,
-   compilador DXC y `file_to_c` del equipo de compilación, carga Vulkan y diálogos.
-   `android/CMakeLists.txt` conecta esas dependencias pero aún usa sus scripts PC;
-   todavía no constituye una compilación Android completa.
-2. Generar `RecompiledFuncs/` usando una ROM propia USA y el proceso `recomp/run.sh`
-   de la base. Aplicar los parches específicos de Conker del proceso original.
-   La ROM se necesita para compilar el port, además de importarse por el jugador.
-3. Compilar y enlazar todo para arm64; comprobar JNI, shaders y bibliotecas empaquetadas.
-4. Probar arranque, gráficos, audio, mandos, guardado, salir y volver a entrar,
-   pausa/reanudación y pérdida de superficie en un teléfono real. La liberación de
-   botones al perder foco no es una implementación completa de pausa del runtime.
-5. Medir frame pacing, FPS reales, memoria y temperatura en el dispositivo; fijar
-   una firma de publicación privada y persistente antes de distribuir actualizaciones.
-
-No se ha medido rendimiento ni ejecutado Conker en un teléfono en esta fase.
-No reemplazar RT64 por una rama Android más antigua sin conservar los parches
-microcode/widescreen propios de Conker. Esa sustitución puede perder funciones
-necesarias del proyecto base.
-
-## Preparación para desarrollo
+Primero genera el código del juego con el proceso original. Sus requisitos adicionales incluyen `binutils-mips-linux-gnu` y las dependencias Python del repositorio:
 
 ```sh
-python3 android/tools/test.py
+git submodule update --init --recursive
+./build.sh --no-game /ruta/a/Conker-USA.z64
 python3 android/tools/prepare.py --dependencies
 ```
 
-El segundo comando obtiene únicamente SDL de su repositorio oficial. No termina la
-integración pendiente de RT64 ni obtiene una ROM. Las dependencias originales siguen
-fijadas por los submódulos del repositorio base; no se modifican aquí.
+`build.sh` aplica los parches originales de Conker. Después, el constructor Android aplica adaptaciones acotadas sobre esas dependencias. No sustituye RT64 por un fork antiguo ni cambia sus revisiones fijadas.
 
-El proyecto declara JDK 17, Gradle 8.11.1, Android Gradle Plugin 8.9.2, SDK 35,
-NDK 28.0.13004108 y CMake 3.22.1. No hay wrapper Gradle incluido en esta fase.
-Una vez resueltos los bloqueos anteriores, el punto de entrada será:
+Crea una clave de firma **privada** una sola vez. Conserva esa misma clave para que las futuras APK puedan actualizar la primera sin desinstalarla. Define `CONKER_KEYSTORE_PASSWORD` y `CONKER_KEY_PASSWORD` en el entorno y usa:
 
 ```sh
-gradle -p android :app:assembleRelease
+python3 android/tools/build_apk.py \
+  --sdk "$ANDROID_HOME" \
+  --keystore /ruta/privada/conker-android.jks \
+  --alias conker-android \
+  --jobs 2
 ```
 
-Ese comando **no está validado todavía**, y no se configura una firma pública o
-una clave de desarrollo como firma de distribución. No publicar una APK sin firmar
-como instalable. No subir ROMs, código derivado de ROM, partidas o claves al repositorio.
+El script compila y enlaza el juego real, usa AAPT2/Javac/D8 para empaquetarlo y firma con `apksigner`. No depende de descargar plugins Gradle. El resultado predeterminado es `android/out/Conker-Recompiled-0.1.1-alpha-arm64.apk`. Falla si faltan el código recompilado o las bibliotecas reales; no produce una APK vacía de sustitución. `--skip-native-build` solo sirve para empaquetar bibliotecas reales ya compiladas a partir del mismo código.
 
-ROM de referencia admitida por el host original: USA sin modificar, 67 108 864 bytes,
-SHA-1 `4cbadd3c4e0729dec46af64ad018050eada4f47a` después de normalizar a big-endian.
-La validación XXH3 propia de librecomp se conserva en el arranque nativo.
+El proyecto Gradle se conserva para desarrollo; requiere preparar antes los mismos parches Android y `android/.host/file_to_c`. El script anterior es el flujo que se verificó para esta APK.
 
-## Referencias técnicas
+## Adaptaciones de dependencias
 
-- Host original: `host/src/main.cpp`, `audio_output.cpp` y `widescreen.cpp`.
-- APIs del runtime fijado: `tools/N64ModernRuntime/ultramodern/include/ultramodern/`.
-- Secuencia de integración RT64: `tools/RecompFrontend/recompui/src/renderer/rt64_render_context.cpp`.
-- Adaptaciones Android estudiadas: `linkzenic/Zelda64Recomp-Android`, cuyo RT64
-  `8df288260ad893e33e9ca500691482136b0ba8e7` no sustituye automáticamente al de Conker.
+`android/tools/patch_dependencies.py` es idempotente y comprueba anclas antes de modificar:
 
-Las licencias de la base y de cada dependencia conservan su ámbito; no se incluyen
-activos comerciales del juego en este cambio.
+- Herramienta `file_to_c` y DXC ejecutados para la arquitectura del ordenador de compilación, no para la del teléfono.
+- Ventana SDL/Vulkan en RT64 y Plume; selección coherente de `SDL_Window*`.
+- Diálogos de escritorio desactivados; el importador usa el selector de documentos Android.
+- Enlace con SDL, `android` y `log`, sin GTK/X11.
+- Constructor de diccionarios zstd excluido de este target: no lo necesita el juego y su `qsort_r` no está disponible en la API mínima.
+
+## Datos privados y GitHub Actions
+
+La ROM, código generado a partir de ella, partidas y claves de firma **no se incluyen en el repositorio ni se envían a Actions**. La APK no incluye el archivo ROM completo y exige importarlo en el teléfono.
+
+`Android source checks` comprueba el importador y Java sin ejecutar el juego. Los workflows manuales de herramientas solo preparan dependencias públicas/recompiladores o el SDK; sus artefactos **no son APKs**. No confundir un check verde de esos workflows con una prueba jugable.
+
+Las partidas están en los archivos privados de la app. Desinstalar borra esos datos; para conservarlos hay que actualizar con la misma firma y el mismo identificador `com.ylports.cbfd`.
