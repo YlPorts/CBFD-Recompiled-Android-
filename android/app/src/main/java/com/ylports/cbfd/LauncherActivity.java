@@ -2,6 +2,7 @@ package com.ylports.cbfd;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -264,9 +265,10 @@ public final class LauncherActivity extends Activity {
                                 .setPositiveButton(mod.enabled?"Disable":"Enable",(d,w)->{
                                     boolean state=LauncherMods.setEnabled(this,mod.id,!mod.enabled);
                                     Toast.makeText(this,state?"Enabled":"Disabled",Toast.LENGTH_SHORT).show();
-                                    showMods();
+                                    // librecomp intentionally coalesces mods.json writes for about a second.
+                                    getWindow().getDecorView().postDelayed(this::showMods,1300);
                                 })
-                                .setNeutralButton("Remove",(d,w)->removeModFile(mod.id))
+                                .setNeutralButton("Remove",(d,w)->removeModFile(mod.file))
                                 .setNegativeButton("Close",null).show();
                         }).setNegativeButton("Close",null).show();
                 });
@@ -276,17 +278,17 @@ public final class LauncherActivity extends Activity {
         });
     }
 
-    private void removeModFile(String modId){
-        // Let the PC scanner resolve IDs on the next scan; filenames are deliberately
-        // not assumed to equal mod_id. Offer file removal only when there is one .nrm
-        // whose filename stem exactly matches the id, otherwise leave it untouched.
+    private void removeModFile(String filename){
         File dir=modsDirectory();
-        File exact=new File(dir,modId+".nrm");
+        File exact=new File(dir,filename);
+        try{
+            if(!exact.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile()))throw new IOException("Invalid mod path.");
+        }catch(IOException error){showError(error);return;}
         if(exact.isFile()&&exact.delete()){
             Toast.makeText(this,"Mod removed",Toast.LENGTH_SHORT).show();
             showMods();
         }else{
-            Toast.makeText(this,"Disable the mod here; remove its .nrm with Android's file manager if its filename differs from its ID.",Toast.LENGTH_LONG).show();
+            Toast.makeText(this,"Could not remove the mod file.",Toast.LENGTH_LONG).show();
         }
     }
 
