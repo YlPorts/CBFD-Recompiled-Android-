@@ -1,9 +1,6 @@
 name: Android software Vulkan test dependency
 on:
   workflow_dispatch:
-  push:
-    branches: [android/pc-0.1.2-direct-port]
-    paths: [.github/workflows/android-vulkan-test-deps.yml]
 permissions:
   contents: read
 jobs:
