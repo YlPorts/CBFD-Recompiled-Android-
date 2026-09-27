@@ -1,6 +1,11 @@
 name: Android ROM-free build kit
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - android/pc-0.1.2-direct-port
+    paths:
+      - '.github/workflows/android-build-kit.yml'
 permissions:
   contents: read
 jobs:
