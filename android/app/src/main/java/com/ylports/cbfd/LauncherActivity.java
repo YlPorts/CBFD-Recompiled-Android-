@@ -19,11 +19,11 @@ public final class LauncherActivity extends Activity {
     private File romDirectory() { return new File(getFilesDir(), "roms"); }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        Immersive.apply(this);
+        StartupDiagnostics.log("LauncherActivity.onCreate");
         File rom = new File(romDirectory(), RomImporter.ROM_NAME);
+        if (StartupDiagnostics.needsRecovery()) { showInterruptedRun(); return; }
         if (rom.isFile() && rom.length() == RomImporter.ROM_SIZE) {
-            if (new File(getFilesDir(), "state/running.marker").exists()) showInterruptedRun();
-            else launch();
+            launch();
             return;
         }
         LinearLayout content = new LinearLayout(this);
@@ -48,6 +48,7 @@ public final class LauncherActivity extends Activity {
         content.addView(status);
         content.addView(choose);
         setContentView(content);
+        content.post(() -> Immersive.apply(this));
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
@@ -77,37 +78,39 @@ public final class LauncherActivity extends Activity {
         int padding = Math.round(24 * getResources().getDisplayMetrics().density);
         content.setPadding(padding, padding, padding, padding);
         TextView message = new TextView(this);
-        message.setText("La sesión anterior terminó de forma inesperada.\nPuedes copiar el diagnóstico o volver a entrar.");
+        message.setText("No se pudo completar el inicio anterior.\nPuedes copiar el diagnóstico o volver a intentarlo.");
         message.setTextSize(18);
         message.setGravity(Gravity.CENTER);
         Button copy = new Button(this);
         copy.setText("Copiar diagnóstico");
         copy.setOnClickListener(v -> {
-            StringBuilder text = new StringBuilder("Conker Android 0.1.1-alpha\n");
-            text.append(android.os.Build.MANUFACTURER).append(' ').append(android.os.Build.MODEL)
-                .append(" — Android ").append(android.os.Build.VERSION.RELEASE).append('\n');
-            File log = new File(getFilesDir(), "state/last-run.log");
-            try (RandomAccessFile file = new RandomAccessFile(log, "r")) {
-                file.seek(Math.max(0, file.length() - 48000));
-                byte[] bytes = new byte[(int)(file.length() - file.getFilePointer())];
-                file.readFully(bytes);
-                text.append(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
-            } catch (IOException e) { text.append("Sin registro: ").append(e.getMessage()); }
             android.content.ClipboardManager clipboard = (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Conker: diagnóstico", text.toString()));
+            if (clipboard != null) clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Conker: diagnóstico", StartupDiagnostics.report()));
             Toast.makeText(this, "Diagnóstico copiado", Toast.LENGTH_SHORT).show();
         });
         Button retry = new Button(this);
-        retry.setText("Volver a entrar");
-        retry.setOnClickListener(v -> launch());
+        File rom = new File(romDirectory(), RomImporter.ROM_NAME);
+        boolean hasRom = rom.isFile() && rom.length() == RomImporter.ROM_SIZE;
+        retry.setText(hasRom ? "Volver a entrar" : "Continuar a importar ROM");
+        retry.setOnClickListener(v -> {
+            if (hasRom) launch();
+            else { StartupDiagnostics.acknowledge(); recreate(); }
+        });
         content.addView(message);
         content.addView(copy);
         content.addView(retry);
         setContentView(content);
     }
     private void launch() {
-        startActivity(new Intent(this, GameActivity.class));
-        finish();
+        StartupDiagnostics.beginLaunch();
+        try {
+            // A string component keeps native/SDL classes out of the launcher's class loading path.
+            startActivity(new Intent().setClassName(this, "com.ylports.cbfd.GameActivity"));
+            finish();
+        } catch (RuntimeException | LinkageError error) {
+            StartupDiagnostics.failure("No se pudo abrir GameActivity", error);
+            showInterruptedRun();
+        }
     }
     @Override public void onWindowFocusChanged(boolean focused) {
         super.onWindowFocusChanged(focused);

@@ -39,7 +39,7 @@ jobs:
           BT="$ANDROID_HOME/build-tools/35.0.0"
           JAR="$ANDROID_HOME/platforms/android-35/android.jar"
           "$BT/aapt2" compile --dir android/app/src/main/res -o smoke/resources.zip
-          "$BT/aapt2" link -I "$JAR" --manifest smoke/AndroidManifest.xml --min-sdk-version 26 --target-sdk-version 35 --version-code 2 --version-name launcher-smoke --java smoke/generated -o smoke/unsigned.apk smoke/resources.zip
+          "$BT/aapt2" link -I "$JAR" --manifest smoke/AndroidManifest.xml --min-sdk-version 26 --target-sdk-version 35 --version-code 3 --version-name launcher-smoke --java smoke/generated -o smoke/unsigned.apk smoke/resources.zip
           find android/app/src/main/java android/.deps/SDL/android-project/app/src/main/java smoke/generated -name '*.java' > smoke/sources.txt
           javac --release 17 -encoding UTF-8 -classpath "$JAR" -d smoke/classes @smoke/sources.txt
           jar --create --file smoke/classes.jar -C smoke/classes .
@@ -53,7 +53,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Cold launch on Android 16
+      - name: Cold launch, document picker and resume on Android 16
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -62,19 +62,7 @@ jobs:
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            adb install -r smoke/launcher-test.apk
-            adb logcat -c
-            adb shell am start -W -n com.ylports.cbfd/.LauncherActivity
-            sleep 8
-            adb logcat -b crash -d > smoke/results/crash.txt
-            adb logcat -d > smoke/results/logcat.txt
-            adb shell dumpsys activity activities > smoke/results/activity.txt
-            adb shell uiautomator dump /sdcard/window.xml || true
-            adb pull /sdcard/window.xml smoke/results/window.xml || true
-            adb exec-out screencap -p > smoke/results/screen.png
-            cat smoke/results/crash.txt
-            grep -q 'Importar ROM' smoke/results/window.xml
+          script: python3 android/tools/launcher_smoke.py smoke/launcher-test.apk smoke/results
       - name: Upload evidence only, never distribute the launcher-only APK
         if: always()
         uses: actions/upload-artifact@v4
