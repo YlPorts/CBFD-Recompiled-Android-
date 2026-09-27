@@ -80,7 +80,7 @@ endif()""")
         'cmake_dependent_option(PLUME_SDL_VULKAN_ENABLED "Enable SDL Vulkan integration" OFF IS_LINUX OFF)',
         'cmake_dependent_option(PLUME_SDL_VULKAN_ENABLED "Enable SDL Vulkan integration" OFF "IS_LINUX OR ANDROID" OFF)')
     replace(rt64, "\nelse()\n    find_package(SDL2 REQUIRED)\nendif()",
-        "\nelif (TARGET SDL2::SDL2)\n    set(SDL2_INCLUDE_DIRS \"$<TARGET_PROPERTY:SDL2::SDL2,INTERFACE_INCLUDE_DIRECTORIES>\")\n    set(SDL2_LIBRARIES SDL2::SDL2)\nelse()\n    find_package(SDL2 REQUIRED)\nendif()")
+        "\nelseif (TARGET SDL2::SDL2)\n    set(SDL2_INCLUDE_DIRS \"$<TARGET_PROPERTY:SDL2::SDL2,INTERFACE_INCLUDE_DIRECTORIES>\")\n    set(SDL2_LIBRARIES SDL2::SDL2)\nelse()\n    find_package(SDL2 REQUIRED)\nendif()")
     replace("tools/rt64/src/hle/rt64_application_window.cpp",
         '#   elif defined(__ANDROID__)\n        static_assert(false && "Android unimplemented");\n#   elif defined(__linux__) || defined(__APPLE__)',
         '#   elif defined(__ANDROID__) || defined(__linux__) || defined(__APPLE__)')
