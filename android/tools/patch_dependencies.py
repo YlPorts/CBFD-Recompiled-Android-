@@ -68,7 +68,12 @@ endif()''')
     if reverse.returncode != 0:
         subprocess.run(['git', 'apply', '--check', str(patch)], cwd=ROOT, check=True)
         subprocess.run(['git', 'apply', str(patch)], cwd=ROOT, check=True)
-    print('Android build and Vulkan surface adaptations applied; Conker patches retained.')
+    patch = ROOT / 'android/patches/mobile-performance.patch'
+    reverse = subprocess.run(['git','apply','--reverse','--check',str(patch)],cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    if reverse.returncode != 0:
+        subprocess.run(['git','apply','--check',str(patch)],cwd=ROOT,check=True)
+        subprocess.run(['git','apply',str(patch)],cwd=ROOT,check=True)
+    print('Android build, WSI and mobile render adaptations applied; Conker patches retained.')
 
 if __name__ == '__main__':
     main()

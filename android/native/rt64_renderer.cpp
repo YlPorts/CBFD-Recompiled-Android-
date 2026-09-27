@@ -7,6 +7,9 @@
 #include <exception>
 #include "librecomp/game.hpp"
 #include "rt64_storage.hpp"
+#include "mobile_metrics.hpp"
+#include "mobile_resolution.hpp"
+#include <chrono>
 #include "hle/rt64_application.h"
 #include "ultramodern/ultramodern.hpp"
 
@@ -18,6 +21,8 @@ class AndroidRenderer final : public RendererContext {
     unsigned int mi = 0, dpc[8]{};
     bool first_display_list = true;
     bool first_screen_update = true;
+    conker::android::MobileResolution resolution;
+    std::chrono::steady_clock::time_point metricsStart{};
     static void interrupt() {}
 public:
     AndroidRenderer(uint8_t* rdram, WindowHandle window) {
@@ -71,6 +76,7 @@ private:
         using U = RT64::UserConfiguration;
         app->userConfig.graphicsAPI = U::GraphicsAPI::Vulkan;
         app->userConfig.developerMode = false;
+        app->userConfig.idleWorkActive = false; // no desktop keep-awake GPU work
         app->userConfig.resolution = U::Resolution::Manual;
         app->userConfig.resolutionMultiplier = 2.0;
         app->userConfig.downsampleMultiplier = 1;
@@ -98,6 +104,7 @@ private:
         }
         if (setup_result != SetupResult::Success) { app->end(); app.reset(); return; }
         app->setFullScreen(true);
+        metricsStart=std::chrono::steady_clock::now();
         std::fprintf(stderr, "[renderer] Vulkan ready; fullscreen/Expand; target presentation=60\n");
     }
 public:
@@ -112,9 +119,13 @@ public:
             std::fprintf(stderr, "[renderer] First Conker display list received\n");
             first_display_list = false;
         }
+        const auto dlStart=std::chrono::steady_clock::now();
         app->state->rsp->reset();
         app->interpreter->loadUCodeGBI(task->t.ucode & 0x3FFFFFF, task->t.ucode_data & 0x3FFFFFF, true);
         app->processDisplayLists(app->core.RDRAM, task->t.data_ptr & 0x3FFFFFF, 0, true);
+        auto &m=conker::android::mobile_metrics;
+        m.displayLists.fetch_add(1,std::memory_order_relaxed);
+        m.displayListUs.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-dlStart).count(),std::memory_order_relaxed);
     }
     void send_dummy_workload(uint32_t address) override {
         app->state->listProcessBegin();
@@ -129,6 +140,22 @@ public:
             first_screen_update = false;
         }
         app->updateScreen();
+        auto &m=conker::android::mobile_metrics;m.vi.fetch_add(1,std::memory_order_relaxed);
+        const auto now=std::chrono::steady_clock::now();
+        const double seconds=std::chrono::duration<double>(now-metricsStart).count();
+        if(seconds<5.0)return;
+        metricsStart=now;
+        const auto p=m.presented.exchange(0),r=m.rendered.exchange(0),g=m.gpuSamples.exchange(0),gu=m.gpuUs.exchange(0);
+        const auto ru=m.renderUs.exchange(0),d=m.displayLists.exchange(0),du=m.displayListUs.exchange(0);
+        const auto v=m.vi.exchange(0),slow=m.slowPresent.exchange(0),near=m.conservativeTriangles.exchange(0);
+        const double fps=p/seconds,gpu=g?gu/(1000.0*g):0;
+        std::fprintf(stderr,"[perf] actualPresentFPS=%.2f renderedFPS=%.2f VI=%.2f gameDL=%.2f gpuMs=%.2f renderWallMs=%.2f dlCPUms=%.2f over25ms=%llu eyePlaneBounds=%llu internal=%.2fx shaders=%u\n",
+            fps,r/seconds,v/seconds,d/seconds,gpu,r?ru/(1000.0*r):0,d?du/(1000.0*d):0,
+            (unsigned long long)slow,(unsigned long long)near,resolution.scale,app->rasterShaderCache->shaderCount());
+        if(resolution.sample(fps,gpu,static_cast<unsigned>(g),seconds)){
+            app->userConfig.resolutionMultiplier=resolution.scale;app->updateUserConfig(true);
+            std::fprintf(stderr,"[perf] GPU-budget scaling -> %.2fx; target remains 60; game clock unchanged\n",resolution.scale);
+        }
     }
     void shutdown() override { if (app) { app->end(); app.reset(); } }
     uint32_t get_display_framerate() const override {

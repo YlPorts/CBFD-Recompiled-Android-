@@ -9,6 +9,9 @@ public final class GameActivity extends SDLActivity {
     private TouchControls touch;
     static native void nativeInput(int buttons, float x, float y);
     private static native void nativeRequestQuit();
+    @Override protected org.libsdl.app.SDLSurface createSDLSurface(android.content.Context context) {
+        return new GameSurface(context);
+    }
     @Override protected String[] getLibraries() { return new String[] {"c++_shared", "SDL2", "main"}; }
     @Override protected String getMainSharedObject() {
         // These libraries are mapped from the APK; nativeLibraryDir may have no files.

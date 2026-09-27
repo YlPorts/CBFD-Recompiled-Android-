@@ -43,6 +43,7 @@ target_include_directories(nfd PUBLIC "${RT64_DIR}/src/contrib/nativefiledialog-
 set(CONKER_HOST_FILE_TO_C "${CMAKE_CURRENT_SOURCE_DIR}/.host/file_to_c" CACHE FILEPATH "Host shader conversion tool")
 add_subdirectory("${RT64_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/rt64")
 target_include_directories(plume PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native")
+target_include_directories(rt64 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native")
 file(GLOB FUNCS CONFIGURE_DEPENDS "${GENERATED}/funcs_*.c")
 if(NOT FUNCS)
     message(FATAL_ERROR "No hay funciones recompiladas de Conker.")
@@ -63,4 +64,4 @@ target_include_directories(main PRIVATE "${ROOT}/host/src" "${GENERATED}"
     "${RT64_DIR}/src/contrib/imgui" "${RT64_DIR}/src/contrib/hlslpp/include"
     "${RT64_DIR}/src/contrib/mupen64plus-core/src/api")
 target_link_libraries(main PRIVATE ConkerGame librecomp ultramodern rt64 SDL2::SDL2 android log)
-target_link_options(main PRIVATE "-Wl,-z,max-page-size=16384")
+target_link_options(main PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--threads=1")

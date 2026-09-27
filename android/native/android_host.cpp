@@ -146,8 +146,8 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         setvbuf(stderr, nullptr, _IOLBF, 0);
         dup2(fileno(stderr), STDOUT_FILENO);
         setvbuf(stdout, nullptr, _IOLBF, 0);
-        std::ofstream(state / "running.marker") << "Conker Android 0.1.4-alpha\n";
-        std::fprintf(stderr, "[startup] Conker Android 0.1.4-alpha ARM64; target=60; aspect=Expand; internal=2x\n");
+        std::ofstream(state / "running.marker") << "Conker Android 0.1.5-alpha\n";
+        std::fprintf(stderr, "[startup] Conker Android 0.1.5-alpha ARM64; target=60; aspect=Expand; internal=2x\n");
         // Validate storage on SDL_main before spawning RT64's graphics thread.
         // This uses --data from Android getFilesDir(), never HOME or /data.
         const auto renderer_path = conker::android::rt64_data_path(state);
@@ -180,7 +180,7 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         char* args[] = {program, flag, name, nullptr};
         recomp::Configuration cfg{};
         cfg.argc = 3; cfg.argv = args;
-        cfg.project_version = recomp::Version{0, 1, 4};
+        cfg.project_version = recomp::Version{0, 1, 5};
         cfg.rsp_callbacks.get_rsp_microcode = rsp;
         cfg.audio_callbacks = {conker::audio::queue_samples, conker::audio::get_frames_remaining, conker::audio::set_frequency};
         cfg.renderer_callbacks.create_render_context = create_android_renderer;

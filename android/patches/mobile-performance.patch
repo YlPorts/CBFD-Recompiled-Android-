@@ -1,0 +1,136 @@
+--- a/tools/rt64/src/hle/rt64_rsp.cpp
++++ b/tools/rt64/src/hle/rt64_rsp.cpp
+@@ -3,6 +3,10 @@
+ //
+ 
+ #include "rt64_rsp.h"
++#ifdef __ANDROID__
++#include "mobile_triangle_bounds.hpp"
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include <algorithm>
+ #include <cassert>
+@@ -1284,9 +1288,19 @@
+             maxMatrix = std::max(maxMatrix, worldIndices[globalIndex]);
+         }
+ 
++        bool conservativeBounds = false;
++#ifdef __ANDROID__
++        const auto &cp = workload.drawData.posTransformed;
++        conservativeBounds = conker::android::conservative_triangle_bounds(
++            cp[globalIndices[0]][3],cp[globalIndices[1]][3],cp[globalIndices[2]][3],
++            posScreen[globalIndices[0]][0],posScreen[globalIndices[0]][1],
++            posScreen[globalIndices[1]][0],posScreen[globalIndices[1]][1],
++            posScreen[globalIndices[2]][0],posScreen[globalIndices[2]][1]);
++        if(conservativeBounds) conker::android::mobile_metrics.conservativeTriangles.fetch_add(1,std::memory_order_relaxed);
++#endif
+         bool visibleTri = true;
+         const bool usesCulling = geometryMode & cullBothMask;
+-        if (usesCulling) {
++        if (usesCulling && !conservativeBounds) {
+             const hlslpp::float3 U = posScreen[globalIndices[1]] - posScreen[globalIndices[0]];
+             const hlslpp::float3 V = posScreen[globalIndices[2]] - posScreen[globalIndices[0]];
+             const hlslpp::float3 N = hlslpp::cross(V, U);
+@@ -1298,7 +1312,10 @@
+             fbPair.scissorRect.merge(scissorRect);
+ 
+             FixedRect drawRect;
+-            for (int i = 0; i < 3; i++) {
++            // Perspective divide can invert winding and give invalid bounds for
++            // geometry crossing the eye plane. Keep coverage; the GPU still clips.
++            if(conservativeBounds) drawRect = scissorRect;
++            else for (int i = 0; i < 3; i++) {
+                 const hlslpp::float3 &v = posScreen[globalIndices[i]];
+                 drawRect.ulx = std::min(drawRect.ulx, int32_t(v[0] * 4.0f));
+                 drawRect.uly = std::min(drawRect.uly, int32_t(v[1] * 4.0f));
+--- a/tools/rt64/src/hle/rt64_application.cpp
++++ b/tools/rt64/src/hle/rt64_application.cpp
+@@ -374,8 +374,14 @@
+         // Create the shader caches.
+         // Estimate the amount of shader compiler threads by trying to use about half of the system's available threads.
+         // We need the ubershader pipelines done as soon as possible, so we use a different thread count that demands more of the system.
++#ifdef __ANDROID__
++        const uint32_t rasterShaderThreads = 1;
++        const uint32_t ubershaderThreads = std::min(threadsAvailable,2U);
++        std::fprintf(stderr,"[perf] Shader workers: background=1 startup=%u\n",ubershaderThreads);
++#else
+         const uint32_t rasterShaderThreads = std::max(threadsAvailable / 2U, 1U);
+         const uint32_t ubershaderThreads = uint32_t(std::max(int(threadsAvailable) - 2, 1));
++#endif
+         rasterShaderCache = std::make_unique<RasterShaderCache>(rasterShaderThreads, ubershaderThreads);
+         rasterShaderCache->setup(device.get(), renderInterface->getCapabilities().shaderFormat, shaderLibrary.get(), multisampling);
+ 
+--- a/tools/rt64/src/common/rt64_thread.cpp
++++ b/tools/rt64/src/common/rt64_thread.cpp
+@@ -6,6 +6,11 @@
+ 
+ #include <cassert>
+ #include <thread>
++#ifdef __ANDROID__
++#include <sys/resource.h>
++#include <sys/syscall.h>
++#include <unistd.h>
++#endif
+ 
+ #if defined(_WIN64)
+ #   include <Windows.h>
+@@ -55,6 +60,10 @@
+     void Thread::setCurrentThreadPriority(Priority priority) {
+ #   if defined(_WIN32)
+         SetThreadPriority(GetCurrentThread(), toWindowsPriority(priority));
++#   elif defined(__ANDROID__)
++        // Android/Linux nice is per-thread. Only lower background workers.
++        if(priority==Priority::Idle||priority==Priority::Lowest||priority==Priority::Low)
++            (void)setpriority(PRIO_PROCESS,static_cast<id_t>(syscall(SYS_gettid)),priority==Priority::Low?5:10);
+ #   elif defined(__linux__) || defined(__APPLE__)
+         // On Linux, thread priorities can't be changed under the default scheduler policy (SCHED_OTHER) and the other policies
+         // that are available without root privileges are lower priority. Instead you can set the thread's "nice" value, which ranges
+--- a/tools/rt64/src/hle/rt64_workload_queue.cpp
++++ b/tools/rt64/src/hle/rt64_workload_queue.cpp
+@@ -3,6 +3,9 @@
+ //
+ 
+ #include "rt64_workload_queue.h"
++#ifdef __ANDROID__
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include "common/rt64_thread.h"
+ 
+@@ -847,7 +850,12 @@
+             // Update the GPU profiler with the results from the timestamps of the frame.
+             queryPool->queryResults();
+             const uint64_t *frameTimestamps = queryPool->getResults();
+-            rendererGPUProfiler.log(double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
++            const double gpuMs=double(frameTimestamps[1]-frameTimestamps[0])/1000000.0;
++            rendererGPUProfiler.log(gpuMs);
++#ifdef __ANDROID__
++            conker::android::mobile_metrics.renderedFrame(gpuMs,
++                double(Timer::deltaMicroseconds(rendererCPUProfiler.startedTimestamp,Timer::current()))/1000.0);
++#endif
+ 
+             // Indicate to the texture cache it's safe to delete the textures if no locks are active.
+             ext.textureCache->decrementLock();
+--- a/tools/rt64/src/hle/rt64_present_queue.cpp
++++ b/tools/rt64/src/hle/rt64_present_queue.cpp
+@@ -3,6 +3,9 @@
+ //
+ 
+ #include "rt64_present_queue.h"
++#ifdef __ANDROID__
++#include "mobile_metrics.hpp"
++#endif
+ 
+ #include "common/rt64_thread.h"
+ #include "rhi/rt64_render_hooks.h"
+@@ -402,6 +405,9 @@
+                 RenderCommandSemaphore *waitSemaphore = drawSemaphores[swapChainIndex].get();
+                 presentTimestamp = Timer::current();
+                 swapChainValid = ext.swapChain->present(swapChainIndex, &waitSemaphore, 1);
++#ifdef __ANDROID__
++                if(swapChainValid) conker::android::mobile_metrics.presentedFrame();
++#endif
+                 presentProfiler.logAndRestart();
+             }
+         }
