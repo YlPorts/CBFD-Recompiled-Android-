@@ -1,5 +1,6 @@
 #include "mobile_render_safety.hpp"
-#include "mobile_metrics.hpp"\n#include "mobile_blend_policy.hpp"
+#include "mobile_metrics.hpp"
+#include "mobile_blend_policy.hpp"
 #include <limits>
 #include <cassert>
 #include <iostream>
@@ -34,6 +35,11 @@ int main() {
     tri[2]={160,240,1};full=false;for(auto v:tri)full|=unsafe_screen_bounds(v.x,v.y,v.w);
     check(!full);
     using namespace conker::mobile;
+    check(mali_g57_dual_source_workaround(0x13B5u, "Mali-G57 MC2"));
+    check(mali_g57_dual_source_workaround(0x13B5u, "Mali-G57"));
+    check(!mali_g57_dual_source_workaround(0x13B5u, "Mali-G610 MC6"));
+    check(!mali_g57_dual_source_workaround(0x10DEu, "Mali-G57 MC2"));
+    check(!mali_g57_dual_source_workaround(0x13B5u, nullptr));
     check(bulk_sleep_ns(-10)==0);check(bulk_sleep_ns(1000000)==0);
     check(bulk_sleep_ns(2000000)==0);check(bulk_sleep_ns(3000000)==2000000);
     check(bulk_sleep_ns(16666667)==15666667);
