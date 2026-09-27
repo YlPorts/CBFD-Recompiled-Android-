@@ -1,5 +1,5 @@
 #include "mobile_render_safety.hpp"
-#include "mobile_metrics.hpp"
+#include "mobile_metrics.hpp"\n#include "mobile_blend_policy.hpp"
 #include <limits>
 #include <cassert>
 #include <iostream>
