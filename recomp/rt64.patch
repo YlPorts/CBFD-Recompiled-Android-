@@ -10,6 +10,20 @@ index 79dfc38..aef4a58 100644
      "${PROJECT_SOURCE_DIR}/src/gbi/rt64_gbi_f3dgolden.cpp"
      "${PROJECT_SOURCE_DIR}/src/gbi/rt64_gbi_f3dpd.cpp"
      "${PROJECT_SOURCE_DIR}/src/gbi/rt64_gbi_f3dwave.cpp"
+diff --git a/include/rt64_extended_gbi.h b/include/rt64_extended_gbi.h
+index d387090..75ab87d 100644
+--- a/include/rt64_extended_gbi.h
++++ b/include/rt64_extended_gbi.h
+@@ -113,6 +113,9 @@
+ #define G_EX_ASPECT_AUTO            0x0
+ #define G_EX_ASPECT_STRETCH         0x1
+ #define G_EX_ASPECT_ADJUST          0x2
++// Stretched to the width like G_EX_ASPECT_STRETCH, and scaled as much vertically about the
++// middle of the scissor, keeping the rect's proportions (its top and bottom are cropped).
++#define G_EX_ASPECT_ZOOM            0x3
+ 
+ #define G_EX_VERTEX_POSITION        0x0
+ #define G_EX_VERTEX_VELOCITY        0x1
 diff --git a/src/common/rt64_common.h b/src/common/rt64_common.h
 index f79adbf..6e0a6f9 100644
 --- a/src/common/rt64_common.h
@@ -27,6 +41,20 @@ index f79adbf..6e0a6f9 100644
      struct FixedRect {
          int32_t ulx;
          int32_t uly;
+diff --git a/src/common/rt64_hlslpp.h b/src/common/rt64_hlslpp.h
+index 1450565..032ed28 100644
+--- a/src/common/rt64_hlslpp.h
++++ b/src/common/rt64_hlslpp.h
+@@ -10,4 +10,8 @@
+ #define HLSLPP_SCALAR
+ #endif
+ 
++// The scalar implementation uses labs() without including <stdlib.h>, which recent
++// macOS SDKs no longer bring in through <math.h>.
++#include <stdlib.h>
++
+ #include "hlsl++.h"
+\ No newline at end of file
 diff --git a/src/gbi/rt64_gbi.cpp b/src/gbi/rt64_gbi.cpp
 index 7006549..4984e7c 100644
 --- a/src/gbi/rt64_gbi.cpp
@@ -257,8 +285,252 @@ index 0000000..99ef5c2
 +        void setup(GBI *gbi);
 +    };
 +};
+diff --git a/src/hle/rt64_game_frame.cpp b/src/hle/rt64_game_frame.cpp
+index 87392d0..fb20d9e 100644
+--- a/src/hle/rt64_game_frame.cpp
++++ b/src/hle/rt64_game_frame.cpp
+@@ -296,7 +296,10 @@ namespace RT64 {
+                 prevWorkloadMap = &prevFrame.frameMap.workloads[workloadMap.prevWorkloadIndex];
+             }
+ 
+-            // Match the transforms linearly in the order they were submitted.
++            // Match the transforms linearly in the order they were submitted. An ID with a different number of
++            // transforms than last frame isn't matched at all: pairing them in order would pair each transform after
++            // the first one added or removed with its neighbour's, and the model would fly apart for a frame (Conker's
++            // characters, whose parts change as their animation does). Unmatched, it's drawn as it is for that frame.
+             ModifiedBuffers modifiedBuffers;
+             auto curIt = curWorkload.transformIdMap.begin();
+             auto prevIt = prevWorkload.transformIdMap.begin();
+@@ -309,9 +312,20 @@ namespace RT64 {
+                     prevIt++;
+                 }
+                 else {
+-                    matchTransform(curWorkload, prevWorkload, curWorkloadMap, prevWorkloadMap, curIt->second, prevIt->second, modifiedBuffers);
+-                    curIt++;
+-                    prevIt++;
++                    const uint32_t id = curIt->first;
++                    const size_t curCount = curWorkload.transformIdMap.count(id);
++                    const size_t prevCount = prevWorkload.transformIdMap.count(id);
++                    if (curCount != prevCount) {
++                        std::advance(curIt, curCount);
++                        std::advance(prevIt, prevCount);
++                        continue;
++                    }
++
++                    for (size_t i = 0; i < curCount; i++) {
++                        matchTransform(curWorkload, prevWorkload, curWorkloadMap, prevWorkloadMap, curIt->second, prevIt->second, modifiedBuffers);
++                        curIt++;
++                        prevIt++;
++                    }
+                 }
+             }
+ 
+@@ -744,17 +758,178 @@ namespace RT64 {
+                 const float *curPosFloatsRef = &curPosFloats[curVertexIndex * 3];
+                 const float *prevPosFloatsRef = &prevPosFloats[prevVertexIndex * 3];
+                 float *curVelFloatsRef = &curVelFloats[curVertexIndex * 3];
+-                for (uint32_t i = 0; i < curVertexCount; i++) {
+-                    for (uint32_t j = 0; j < 3; j++) {
+-                        curVelFloatsRef[i * 3 + j] = (curPosFloatsRef[i * 3 + j] - prevPosFloatsRef[i * 3 + j]);
+-                    }
++                // Vertices are paired by their order, so a transform matched to one drawing other geometry (same vertex
++                // count) would smear it. Motion that large in one frame isn't a model moving: leave those as they are.
++                const float MaxVertexStep = 64.0f;
++                bool plausible = true;
++                for (uint32_t i = 0; (i < curVertexCount * 3) && plausible; i++) {
++                    plausible = fabsf(curPosFloatsRef[i] - prevPosFloatsRef[i]) < MaxVertexStep;
+                 }
+ 
+-                modifiedBuffers.positionVelocity = true;
++                if (plausible) {
++                    for (uint32_t i = 0; i < curVertexCount; i++) {
++                        for (uint32_t j = 0; j < 3; j++) {
++                            curVelFloatsRef[i * 3 + j] = (curPosFloatsRef[i * 3 + j] - prevPosFloatsRef[i * 3 + j]);
++                        }
++                    }
++
++                    modifiedBuffers.positionVelocity = true;
++                }
+             }
+         }
+ 
+-        if ((curGroup.texcoordInterpolation != G_EX_COMPONENT_SKIP) && (curVertexCount == prevVertexCount)) {
++        // Texture coordinates interpolated while the positions aren't: geometry rebuilt every frame with its
++        // coordinates projected from its position (Conker's Bad Fur Day's shadows: the ground under a character,
++        // clipped anew each frame, with the shadow's texture projected onto it from the light's point of view).
++        // Its vertices can't be paired with last frame's, so last frame's projection is fitted instead (a
++        // perspective map from position to texture coordinates, by least squares, in world space) and each
++        // vertex's coordinates last frame are taken from it.
++        if ((curGroup.texcoordInterpolation == G_EX_COMPONENT_INTERPOLATE) && (curGroup.vertexInterpolation == G_EX_COMPONENT_SKIP) && (curVertexCount > 0) && (prevVertexCount >= 3)) {
++            const float *prevLocal = &prevWorkload.drawData.posFloats[prevVertexIndex * 3];
++            const float *prevTc = &prevWorkload.drawData.tcFloats[prevVertexIndex * 2];
++            const float *curLocal = &curWorkload.drawData.posFloats[curVertexIndex * 3];
++            const float *curTc = &curWorkload.drawData.tcFloats[curVertexIndex * 2];
++            float *curTcVel = &curWorkload.drawData.tcVelFloats[curVertexIndex * 2];
++
++            // Positions in the world: each frame's are relative to its own transform, which can move.
++            thread_local std::vector<float> prevWorld, curWorld;
++            auto toWorld = [](const float *local, uint32_t count, const hlslpp::float4x4 &m, std::vector<float> &out) {
++                out.resize(count * 3);
++                for (uint32_t i = 0; i < count; i++) {
++                    const hlslpp::float4 w = hlslpp::mul(hlslpp::float4(local[i * 3 + 0], local[i * 3 + 1], local[i * 3 + 2], 1.0f), m);
++                    out[i * 3 + 0] = w.x;
++                    out[i * 3 + 1] = w.y;
++                    out[i * 3 + 2] = w.z;
++                }
++            };
++            toWorld(prevLocal, prevVertexCount, prevTransform, prevWorld);
++            toWorld(curLocal, curVertexCount, curTransform, curWorld);
++            const float *prevPos = prevWorld.data();
++            const float *curPos = curWorld.data();
++
++            // The texture's extent last frame.
++            float tcMin[2] = { FLT_MAX, FLT_MAX }, tcMax[2] = { -FLT_MAX, -FLT_MAX };
++            double mean[3] = {}, meanSq = 0.0;
++            for (uint32_t i = 0; i < prevVertexCount; i++) {
++                for (int b = 0; b < 2; b++) {
++                    tcMin[b] = std::min(tcMin[b], prevTc[i * 2 + b]);
++                    tcMax[b] = std::max(tcMax[b], prevTc[i * 2 + b]);
++                }
++                for (int j = 0; j < 3; j++) mean[j] += prevPos[i * 3 + j];
++            }
++            for (int j = 0; j < 3; j++) mean[j] /= prevVertexCount;
++            for (uint32_t i = 0; i < prevVertexCount; i++) {
++                for (int j = 0; j < 3; j++) meanSq += (prevPos[i * 3 + j] - mean[j]) * (prevPos[i * 3 + j] - mean[j]);
++            }
++            const double scale = std::sqrt(meanSq / prevVertexCount) + 1e-9;
++
++            // s = (a . q + a0) / (d . q + 1) and t = (b . q + b0) / (d . q + 1), q the normalised position,
++            // made linear: a . q + a0 - s (d . q) = s. Eleven unknowns: a, a0, b, b0 and d.
++            double normal[11][12] = {};
++            uint32_t used = 0;
++            auto addRow = [&](const double row[11], double rhs) {
++                for (int r = 0; r < 11; r++) {
++                    for (int c = 0; c < 11; c++) normal[r][c] += row[r] * row[c];
++                    normal[r][11] += row[r] * rhs;
++                }
++            };
++            // Every vertex follows the projection, those on the texture's edges too: the game clips the ground
++            // where the projection reaches them.
++            for (uint32_t i = 0; i < prevVertexCount; i++) {
++                const double q[3] = { (prevPos[i * 3 + 0] - mean[0]) / scale, (prevPos[i * 3 + 1] - mean[1]) / scale, (prevPos[i * 3 + 2] - mean[2]) / scale };
++                const double s = prevTc[i * 2 + 0], t = prevTc[i * 2 + 1];
++                const double rowS[11] = { q[0], q[1], q[2], 1.0, 0.0, 0.0, 0.0, 0.0, -s * q[0], -s * q[1], -s * q[2] };
++                const double rowT[11] = { 0.0, 0.0, 0.0, 0.0, q[0], q[1], q[2], 1.0, -t * q[0], -t * q[1], -t * q[2] };
++                addRow(rowS, s);
++                addRow(rowT, t);
++                used++;
++            }
++
++            // A little ridge: flat ground leaves the coefficients across it undetermined.
++            double trace = 0.0;
++            for (int r = 0; r < 11; r++) trace += normal[r][r];
++            for (int r = 0; r < 11; r++) normal[r][r] += 1e-7 * trace + 1e-12;
++
++            // Gaussian elimination with partial pivoting.
++            bool solved = (used >= 6);
++            for (int c = 0; (c < 11) && solved; c++) {
++                int pivot = c;
++                for (int r = c + 1; r < 11; r++) {
++                    if (fabs(normal[r][c]) > fabs(normal[pivot][c])) pivot = r;
++                }
++                if (fabs(normal[pivot][c]) < 1e-18) {
++                    solved = false;
++                    break;
++                }
++                if (pivot != c) {
++                    for (int k = 0; k < 12; k++) std::swap(normal[c][k], normal[pivot][k]);
++                }
++                for (int r = 0; r < 11; r++) {
++                    if (r == c) continue;
++                    const double f = normal[r][c] / normal[c][c];
++                    for (int k = c; k < 12; k++) normal[r][k] -= f * normal[c][k];
++                }
++            }
++
++            if (solved) {
++                double coef[11];
++                for (int r = 0; r < 11; r++) coef[r] = normal[r][11] / normal[r][r];
++                auto project = [&](const float *p, double out[2]) {
++                    const double q[3] = { (p[0] - mean[0]) / scale, (p[1] - mean[1]) / scale, (p[2] - mean[2]) / scale };
++                    const double w = coef[8] * q[0] + coef[9] * q[1] + coef[10] * q[2] + 1.0;
++                    out[0] = (coef[0] * q[0] + coef[1] * q[1] + coef[2] * q[2] + coef[3]) / w;
++                    out[1] = (coef[4] * q[0] + coef[5] * q[1] + coef[6] * q[2] + coef[7]) / w;
++                };
++
++                // Only if last frame's coordinates fit it closely (on average within 1% of the texture's extent).
++                double residual = 0.0;
++                for (uint32_t i = 0; i < prevVertexCount; i++) {
++                    double predicted[2];
++                    project(&prevPos[i * 3], predicted);
++                    residual += fabs(predicted[0] - prevTc[i * 2 + 0]) + fabs(predicted[1] - prevTc[i * 2 + 1]);
++                }
++                residual /= std::max(used, 1U);
++                const double spread = std::max(tcMax[0] - tcMin[0], tcMax[1] - tcMin[1]);
++
++                // The vertices fitted must cover the texture in both directions: a few, or ones along a line,
++                // fit closely while leaving the map across them undetermined.
++                float usedMin[2] = { FLT_MAX, FLT_MAX }, usedMax[2] = { -FLT_MAX, -FLT_MAX };
++                for (uint32_t i = 0; i < prevVertexCount; i++) {
++                    for (int b = 0; b < 2; b++) {
++                        usedMin[b] = std::min(usedMin[b], prevTc[i * 2 + b]);
++                        usedMax[b] = std::max(usedMax[b], prevTc[i * 2 + b]);
++                    }
++                }
++                const bool covered = (used >= 12) && ((usedMax[0] - usedMin[0]) > 0.25 * spread) && ((usedMax[1] - usedMin[1]) > 0.25 * spread);
++                if (covered && (spread > 0.0) && (residual <= 0.01 * spread)) {
++                    // The shadow moves a few texels a frame: a vertex whose coordinates would move more than a
++                    // quarter of the texture means the map doesn't hold there, and the frame is drawn as it is.
++                    const double maxStep = 0.25 * spread;
++                    bool plausible = true;
++                    for (uint32_t i = 0; (i < curVertexCount) && plausible; i++) {
++                        double predicted[2];
++                        project(&curPos[i * 3], predicted);
++                        for (int b = 0; b < 2; b++) {
++                            // Last frame's coordinates were clipped to the texture's edges too.
++                            const double previous = std::clamp(predicted[b], double(tcMin[b]), double(tcMax[b]));
++                            const double step = curTc[i * 2 + b] - previous;
++                            plausible = plausible && std::isfinite(step) && (fabs(step) <= maxStep);
++                            curTcVel[i * 2 + b] = float(step);
++                        }
++                    }
++
++                    if (plausible) {
++                        modifiedBuffers.texcoordVelocity = true;
++                    }
++                    else {
++                        for (uint32_t i = 0; i < curVertexCount * 2; i++) {
++                            curTcVel[i] = 0.0f;
++                        }
++                    }
++                }
++            }
++        }
++        else if ((curGroup.texcoordInterpolation != G_EX_COMPONENT_SKIP) && (curVertexCount == prevVertexCount)) {
+             const std::vector<float> &curTcFloats = curWorkload.drawData.tcFloats;
+             const std::vector<float> &prevTcFloats = prevWorkload.drawData.tcFloats;
+             std::vector<float> &curVelFloats = curWorkload.drawData.tcVelFloats;
+diff --git a/src/hle/rt64_rigid_body.cpp b/src/hle/rt64_rigid_body.cpp
+index fd8b3eb..b053489 100644
+--- a/src/hle/rt64_rigid_body.cpp
++++ b/src/hle/rt64_rigid_body.cpp
+@@ -24,11 +24,11 @@ namespace RT64 {
+             hlslpp::float3 prevPosition = prevTransform[3].xyz;
+             hlslpp::float3 curPosition = curTransform[3].xyz;
+             hlslpp::float3 curLinearVelocity = curPosition - prevPosition;
+-            hlslpp::float3 curAcceleration = (curLinearVelocity - linearVelocity);
+             float prevVelMag = hlslpp::length(linearVelocity);
+             float curVelMag = hlslpp::length(curLinearVelocity);
+-            float dotCurVel = std::max(hlslpp::dot(linearVelocity / std::max(prevVelMag, Epsilon), curLinearVelocity / std::max(curVelMag, Epsilon))[0], Epsilon);
+-            curVelMag /= dotCurVel;
++            // A change of direction alone isn't a teleport: animations swing parts back and forth
++            // (Conker's walk reverses some of his every few frames), and snapping them on each
++            // reversal while the rest is interpolated makes the model vibrate. Only a jump in speed is.
+             lerpTranslation = (curVelMag < VelocityTolerance) || (curVelMag / std::max(prevVelMag, Epsilon)) < MagnitudeThreshold;
+             linearVelocity = curLinearVelocity;
+         }
 diff --git a/src/hle/rt64_rsp.cpp b/src/hle/rt64_rsp.cpp
-index 1da2550..4672149 100644
+index 1da2550..f11897f 100644
 --- a/src/hle/rt64_rsp.cpp
 +++ b/src/hle/rt64_rsp.cpp
 @@ -4,7 +4,9 @@
@@ -427,7 +699,40 @@ index 1da2550..4672149 100644
      void RSP::setVertexColorPD(uint32_t address) {
          vertexColorPDAddress = fromSegmentedMasked(address);
      }
-@@ -841,7 +992,12 @@ namespace RT64 {
+@@ -506,13 +657,18 @@ namespace RT64 {
+         const int workloadCursor = state->ext.workloadQueue->writeCursor;
+         Workload &workload = state->ext.workloadQueue->workloads[workloadCursor];
+ 
++        // A new group starts a new transform even when the matrix is the same: otherwise the vertices after a
++        // group is pushed or popped are added to the previous transform, in the group it was made in (the
++        // commands after a group would count as its own).
++        bool groupChanged = false;
+         if (extended.modelMatrixIdStackChanged) {
+             const int stackIndex = extended.modelMatrixIdStackSize - 1;
+             extended.curModelMatrixIdGroupIndex = int(workload.drawData.transformGroups.size());
+             workload.drawData.transformGroups.emplace_back(extended.modelMatrixIdStack[stackIndex]);
+             extended.modelMatrixIdStackChanged = false;
++            groupChanged = true;
+         }
+-        
++
+         // ModelViewProj is only updated when a vertex is processed and the flag is enabled.
+         auto &worldTransforms = workload.drawData.worldTransforms;
+         auto &worldTransformGroups = workload.drawData.worldTransformGroups;
+@@ -520,6 +676,12 @@ namespace RT64 {
+         auto &worldTransformPhysicalAddresses = workload.drawData.worldTransformPhysicalAddresses;
+         auto &worldTransformVertexIndices = workload.drawData.worldTransformVertexIndices;
+         bool addWorldTransform = (modelViewProjChanged || modelViewProjInserted);
++        if (groupChanged && !addWorldTransform && !worldTransforms.empty()) {
++            const hlslpp::float4x4 current = worldTransforms[curTransformIndex];
++            curTransformIndex = static_cast<uint16_t>(worldTransforms.size());
++            worldTransforms.emplace_back(current);
++            addWorldTransform = true;
++        }
+         if (modelViewProjChanged) {
+             computeModelViewProj();
+             curTransformIndex = static_cast<uint16_t>(worldTransforms.size());
+@@ -841,7 +1003,12 @@ namespace RT64 {
          const uint32_t globalIndex = indices[vtxIndex];
          const float screenZ = workload.drawData.posScreen[globalIndex][2] * DepthRange;
          const float zValueFloat = zValue / 65536.0f;
@@ -484,19 +789,21 @@ index 61bb3b1..313f93a 100644
          void setVertexSegmentV1(bool isEnabled, uint32_t vertexElement, uint32_t vertexAddress, uint32_t baseSegmentAddress);
          template<uint32_t floatCount, uint32_t vertexSize>
 diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
-index 9fae0d4..5943590 100644
+index 9fae0d4..b518a93 100644
 --- a/src/render/rt64_framebuffer_renderer.cpp
 +++ b/src/render/rt64_framebuffer_renderer.cpp
-@@ -1488,7 +1488,7 @@ namespace RT64 {
+@@ -1488,7 +1488,9 @@ namespace RT64 {
                  // The call's scissor spans the whole width of the framebuffer pair scissor. Custom origin must not be in use to be able to use the stretched viewport.
                  const auto &viewport = drawData.rspViewports[proj.transformsIndex];
                  FixedRect intersectionRect = proj.scissorRect.intersection(viewport.rect(viewportClipRatios));
 -                bool coversWholeWidth = !intersectionRect.isEmpty() && (intersectionRect.ulx <= fbPair.scissorRect.ulx) && (intersectionRect.lrx >= fbPair.scissorRect.lrx);
-+                bool coversWholeWidth = !intersectionRect.isEmpty() && (intersectionRect.ulx <= fbPair.scissorRect.ulx + CoversWidthSlack) && (intersectionRect.lrx >= fbPair.scissorRect.lrx - CoversWidthSlack);
++                // With no pair scissor (all its triangles culled), compare with the projection's own, as ProjectionProcessor does.
++                const FixedRect &pairScissor = fbPair.scissorRect.isNull() ? proj.scissorRect : fbPair.scissorRect;
++                bool coversWholeWidth = !intersectionRect.isEmpty() && (intersectionRect.ulx <= pairScissor.ulx + CoversWidthSlack) && (intersectionRect.lrx >= pairScissor.lrx - CoversWidthSlack);
                  bool horizontalRatio = !intersectionRect.isEmpty() && (intersectionRect.width(true, true) > intersectionRect.height(true, true));
                  bool useWideViewport = (viewportOrigin == G_EX_ORIGIN_NONE) && coversWholeWidth && horizontalRatio;
                  if (useWideViewport) {
-@@ -1625,6 +1625,7 @@ namespace RT64 {
+@@ -1625,6 +1627,7 @@ namespace RT64 {
  
                          float invRatioScale = 1.0f / aspectRatioScale;
                          float horizontalMisalignment = 0.0f;
@@ -504,7 +811,16 @@ index 9fae0d4..5943590 100644
                          switch (proj.type) {
                          case Projection::Type::Perspective:
                          case Projection::Type::Orthographic: {
-@@ -1652,7 +1653,31 @@ namespace RT64 {
+@@ -1645,14 +1648,46 @@ namespace RT64 {
+                             // The call's scissor spans the whole width of the framebuffer pair scissor. The rect must not be using extended origins.
+                             const bool regularOrigins = (call.callDesc.rectLeftOrigin == G_EX_ORIGIN_NONE) && (call.callDesc.rectRightOrigin == G_EX_ORIGIN_NONE);
+                             const bool coversScissorWidth = regularOrigins && (call.callDesc.rect.ulx <= fbPair.scissorRect.ulx) && (call.callDesc.rect.lrx >= fbPair.scissorRect.lrx);
+-                            if ((tileCopiesUsed || coversScissorWidth || call.callDesc.rectAspect == G_EX_ASPECT_STRETCH) && (call.callDesc.rectAspect != G_EX_ASPECT_ADJUST)) {
++                            const bool stretchAspect = (call.callDesc.rectAspect == G_EX_ASPECT_STRETCH) || (call.callDesc.rectAspect == G_EX_ASPECT_ZOOM);
++                            if ((tileCopiesUsed || coversScissorWidth || stretchAspect) && (call.callDesc.rectAspect != G_EX_ASPECT_ADJUST)) {
+                                 invRatioScale = 1.0f;
+                             }
+                             else {
                                  horizontalMisalignment = p.horizontalMisalignment;
                              }
  
@@ -533,10 +849,17 @@ index 9fae0d4..5943590 100644
 +                                }
 +                            }
 +
++                            // Zoomed: stretched to the width above, and scaled as much vertically about the middle of the scissor.
++                            if ((call.callDesc.rectAspect == G_EX_ASPECT_ZOOM) && !call.callDesc.scissorRect.isNull()) {
++                                const float middle = ((call.callDesc.scissorRect.uly + call.callDesc.scissorRect.lry) / 8.0f) * p.resolutionScale.y;
++                                viewportRect.y = middle + (viewportRect.y - middle) * aspectRatioScale;
++                                viewportRect.height *= aspectRatioScale;
++                            }
++
                              triangles.screenScale = { viewportRect.width / framebuffer.viewport.width, viewportRect.height / framebuffer.viewport.height };
                              triangles.screenOffset.x = halfPixelOffset.x + ((viewportRect.x + viewportRect.width / 2.0f) - halfViewportSize.x) / halfViewportSize.x;
                              triangles.screenOffset.y = halfPixelOffset.y + (halfViewportSize.y - (viewportRect.y + viewportRect.height / 2.0f)) / halfViewportSize.y;
-@@ -1676,7 +1701,12 @@ namespace RT64 {
+@@ -1676,7 +1711,12 @@ namespace RT64 {
                              break;
                          }
  
@@ -551,16 +874,42 @@ index 9fae0d4..5943590 100644
                          bool usesViewport = (proj.type == Projection::Type::Perspective) || (proj.type == Projection::Type::Orthographic);
                          if (usesViewport) {
 diff --git a/src/render/rt64_projection_processor.cpp b/src/render/rt64_projection_processor.cpp
-index e842dcc..b27031f 100644
+index e842dcc..4b4cfbb 100644
 --- a/src/render/rt64_projection_processor.cpp
 +++ b/src/render/rt64_projection_processor.cpp
-@@ -92,7 +92,8 @@ namespace RT64 {
+@@ -92,7 +92,11 @@ namespace RT64 {
                  }
  
                  if (!intersectionRect.isEmpty()) {
 -                    bool coversWholeWidth = (intersectionRect.ulx <= fbPair.scissorRect.ulx) && (intersectionRect.lrx >= fbPair.scissorRect.lrx);
-+                    // Same slack as FramebufferRenderer's wide viewport check: the two must agree.
-+                    bool coversWholeWidth = (intersectionRect.ulx <= fbPair.scissorRect.ulx + CoversWidthSlack) && (intersectionRect.lrx >= fbPair.scissorRect.lrx - CoversWidthSlack);
++                    // Same slack as FramebufferRenderer's wide viewport check: the two must agree. A pair whose triangles were
++                    // all culled has no scissor; compare with the projection's own then, or this projection's transforms, which
++                    // another pair that did draw may share, would lose their widening (Conker's hub, near the naughty/nice sign).
++                    const FixedRect &pairScissor = fbPair.scissorRect.isNull() ? proj.scissorRect : fbPair.scissorRect;
++                    bool coversWholeWidth = (intersectionRect.ulx <= pairScissor.ulx + CoversWidthSlack) && (intersectionRect.lrx >= pairScissor.lrx - CoversWidthSlack);
                      bool horizontalRatio = (intersectionRect.width(true, true) > intersectionRect.height(true, true));
                      adjustAspectRatio = (viewportOrigin == G_EX_ORIGIN_NONE) && coversWholeWidth && horizontalRatio;
                  }
+@@ -121,8 +125,20 @@ namespace RT64 {
+                 const interop::float4x4 curProjTransform = projMatrix;
+                 interop::float4x4 adjustedPrevProj = *prevProjMatrix;
+                 adjustProjectionMatrix(adjustedPrevProj, projRatioScale);
+-                viewMatrix = rigidBody->lerp(p.curFrameWeight, *prevViewMatrix, curViewTransform, true);
+-                prevViewTransform = rigidBody->lerp(p.prevFrameWeight, *prevViewMatrix, curViewTransform, true);
++                if (rigidBody->lerpDecompose) {
++                    viewMatrix = rigidBody->lerp(p.curFrameWeight, *prevViewMatrix, curViewTransform, true);
++                    prevViewTransform = rigidBody->lerp(p.prevFrameWeight, *prevViewMatrix, curViewTransform, true);
++                }
++                else {
++                    // Interpolate the camera, not the view: a view matrix's translation is the world's origin seen
++                    // from the camera, so lerping it while the camera turns moves the in-between camera off its path,
++                    // by more the further the camera is from the origin. The world then shakes around what the camera
++                    // follows at the game's frame rate (Conker, most when the camera is close and turning quickly).
++                    const interop::float4x4 prevCamera = hlslpp::inverse(*prevViewMatrix);
++                    const interop::float4x4 curCamera = hlslpp::inverse(curViewTransform);
++                    viewMatrix = hlslpp::inverse(rigidBody->lerp(p.curFrameWeight, prevCamera, curCamera, true));
++                    prevViewTransform = hlslpp::inverse(rigidBody->lerp(p.prevFrameWeight, prevCamera, curCamera, true));
++                }
+ 
+                 // We only interpolate the projection if the view matrix has been interpolated.
+                 const bool interpolateProjection = rigidBody->lerpTranslation || rigidBody->lerpRotation;

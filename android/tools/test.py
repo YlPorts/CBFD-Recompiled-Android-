@@ -16,6 +16,7 @@ def main():
         subprocess.run([
             "javac", "--release", "17", "-Xlint:all", "-Werror", "-d", output,
             str(ROOT / "android/app/src/main/java/com/ylports/cbfd/RomImporter.java"),
+            str(ROOT / "android/app/src/main/java/com/ylports/cbfd/RomVersions.java"),
             str(ROOT / "android/tests/RomImporterTest.java"),
         ], check=True)
         subprocess.run(["java", "-ea", "-cp", output, "com.ylports.cbfd.RomImporterTest"], check=True)

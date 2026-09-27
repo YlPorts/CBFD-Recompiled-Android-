@@ -3,6 +3,7 @@
 Host-only concurrency/ownership tests, not an Android or frame-rate benchmark.
 """
 from pathlib import Path
+import os
 import subprocess, tempfile
 R = Path(__file__).resolve().parents[2]
 
@@ -84,7 +85,7 @@ template<class T> void test(){
 int main(){test<PresentQueue>();test<WorkloadQueue>();std::cout<<"PASS "<<checks<<" queue ownership/wakeup/shutdown assertions (exact production methods; host only)\n";}
 '''
     out = Path(tmp); (out/'test.cpp').write_text(text)
-    subprocess.run(['clang++','-std=c++20','-O2','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fno-sanitize-recover=all','-pthread',str(out/'test.cpp'),'-o',str(out/'test')],check=True)
+    subprocess.run([os.environ.get('CXX', 'clang++'),'-std=c++20','-O2','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fno-sanitize-recover=all','-pthread',str(out/'test.cpp'),'-o',str(out/'test')],check=True)
     subprocess.run([str(out/'test')],check=True,timeout=20)
     rsp=(R/'tools/rt64/src/hle/rt64_rsp.cpp').read_text()
     method=function(rsp,'    void RSP::drawIndexedTri')

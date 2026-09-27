@@ -111,6 +111,30 @@ index 94f85c5..9e4d1e5 100644
              break;
          default:
              assert(false);
+diff --git a/src/config.cpp b/src/config.cpp
+index 1066aff..5183454 100644
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -595,6 +595,10 @@ bool N64Recomp::Context::from_symbol_file(const std::filesystem::path& symbol_fi
+                         std::optional<std::string> name = func_el["name"].template value<std::string>();
+                         std::optional<uint32_t> vram_addr = func_el["vram"].template value<uint32_t>();
+                         std::optional<uint32_t> func_size_ = func_el["size"].template value<uint32_t>();
++                        // Optional: a function whose vram is an alias outside its section's
++                        // (like an entrypoint in KSEG0 for code linked at a TLB address)
++                        // gives its rom address directly.
++                        std::optional<uint32_t> rom_addr = func_el["rom"].template value<uint32_t>();
+ 
+                         if (!name.has_value() || !vram_addr.has_value() || !func_size_.has_value()) {
+                             throw toml::parse_error("Function symbol entry is missing required field(s)", func_el.source());
+@@ -605,7 +609,7 @@ bool N64Recomp::Context::from_symbol_file(const std::filesystem::path& symbol_fi
+                         Function cur_func{};
+                         cur_func.name = name.value();
+                         cur_func.vram = vram_addr.value();
+-                        cur_func.rom = cur_func.vram - section.ram_addr + section.rom_addr;
++                        cur_func.rom = rom_addr.has_value() ? rom_addr.value() : cur_func.vram - section.ram_addr + section.rom_addr;
+                         cur_func.section_index = section_index;
+ 
+                         if (cur_func.vram & 0b11) {
 diff --git a/src/main.cpp b/src/main.cpp
 index 669c4a1..adbcb9f 100644
 --- a/src/main.cpp

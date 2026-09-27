@@ -1,0 +1,63 @@
+{
+  "version": "0.1.9-alpha",
+  "version_code": 10,
+  "package": "com.ylports.cbfd",
+  "pc_tag": "V0.1.1",
+  "pc_commit": "48e10dce99b9de6146b1d449d8fab538bbc7c55b",
+  "apk_bytes": 23396971,
+  "apk_sha256": "83cc7773f85caf5328c07894f7e6664c56b4e53cadb1fa3e7968401cfa2e9661",
+  "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+  "native_libraries": {
+    "lib/arm64-v8a/libmain.so": {
+      "bytes": 20101664,
+      "load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "machine": "AArch64"
+    },
+    "lib/arm64-v8a/libSDL2.so": {
+      "bytes": 1490616,
+      "load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "machine": "AArch64"
+    },
+    "lib/arm64-v8a/libc++_shared.so": {
+      "bytes": 1728248,
+      "load_alignments": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "machine": "AArch64"
+    }
+  },
+  "phone_gameplay": "not tested",
+  "phone_fps": "not measured",
+  "checks": {
+    "rom_importer": 42,
+    "touch": 184,
+    "metrics": 34,
+    "matching_clipping": 35976,
+    "actual_matcher_math": 6001,
+    "render_orbit": 29609,
+    "actual_original_camera_comparisons": 52,
+    "storage": 16,
+    "vulkan_surface_policy": 40,
+    "mocked_plume_methods": 167,
+    "rt64_initialization_source_checks": 3,
+    "production_queue_assertions": 40022,
+    "pc_hooks_and_regenerated_camera_discovery": "passed",
+    "private_rom_asset_variants_and_atomic_switch": "passed",
+    "dependency_patch_idempotence": "passed on 34 changed production files",
+    "native_arm64_compile_link": "passed",
+    "java_dex_package": "passed",
+    "apk_v2_v3_signature": "passed",
+    "zip_elf_16k_alignment": "passed"
+  }
+}

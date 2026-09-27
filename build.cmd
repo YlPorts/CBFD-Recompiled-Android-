@@ -1,9 +1,9 @@
 @echo off
 rem Builds Conker's Bad Fur Day: Recompiled on Windows from a clone and your ROM:
 rem   build.cmd [path\to\rom.z64]
-rem The ROM is copied to conker\baserom.us.z64 (needed once). The decompilation and
-rem the recompiler run in WSL (build.sh), then the game is built with Visual Studio.
-rem Safe to run again after `git pull`: only what changed is rebuilt.
+rem The ROM is copied to conker\baserom.us.z64 (needed once). Needs Git, Python 3 and
+rem Visual Studio with C++; nothing else. Safe to run again after `git pull`: only what
+rem changed is rebuilt.
 setlocal EnableExtensions
 cd /d "%~dp0"
 set "ROOT=%CD%"
@@ -20,16 +20,14 @@ where git >nul 2>&1 || (
     echo Error: Git for Windows wasn't found. Install it from https://git-scm.com/download/win
     exit /b 1
 )
-where wsl >nul 2>&1 || (
-    echo Error: WSL wasn't found. In an administrator PowerShell, run:
-    echo   wsl --install -d Ubuntu
-    echo then restart, finish Ubuntu's first-run setup, and run this again.
-    exit /b 1
-)
-wsl -e true >nul 2>&1 || (
-    echo Error: WSL has no Linux distribution set up. In an administrator PowerShell, run:
-    echo   wsl --install -d Ubuntu
-    echo then restart, finish Ubuntu's first-run setup, and run this again.
+rem Python: the py launcher if there is one; a plain `python` can be the Microsoft Store's
+rem placeholder, which only opens the Store, so it has to run to count.
+set "PY="
+py -3 --version >nul 2>&1 && set "PY=py -3"
+if not defined PY python --version >nul 2>&1 && set "PY=python"
+if not defined PY (
+    echo Error: Python 3 wasn't found. Install it from https://www.python.org/downloads/
+    echo ^(tick "Add python.exe to PATH" in the installer^), then run this again.
     exit /b 1
 )
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -71,8 +69,20 @@ call :apply_patch tools/N64Recomp recomp/n64recomp.patch || exit /b 1
 call :apply_patch tools/N64ModernRuntime recomp/n64modernruntime.patch || exit /b 1
 call :apply_patch tools/rt64 recomp/rt64.patch || exit /b 1
 
-rem The decompilation and the recompiler (Linux programs), in WSL.
-wsl --cd "%ROOT%" sh ./build.sh --no-game --skip-git || exit /b 1
+echo.
+echo ==^> Building the recompiler
+setlocal
+set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
+call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
+if not exist tools\N64Recomp\build-win\build.ninja (
+    cmake -S tools/N64Recomp -B tools/N64Recomp/build-win -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
+)
+cmake --build tools/N64Recomp/build-win --target N64RecompCLI RSPRecomp || exit /b 1
+endlocal
+
+echo.
+echo ==^> Recompiling the game from your ROM
+%PY% recomp\recompile.py --bin tools/N64Recomp/build-win || exit /b 1
 
 echo.
 echo ==^> Building the game

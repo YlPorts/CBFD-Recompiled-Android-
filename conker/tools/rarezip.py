@@ -4,8 +4,9 @@ import sys
 import subprocess
 
 def compress_file(filepath, level=9):
-    # force use of the gzip that sits along this file
-    gzip = os.path.join(os.path.dirname(os.path.realpath(__file__)), "gzip")
+    # force use of the gzip that sits along this file (a Linux build of mkst/gzip);
+    # RAREZIP_GZIP names an equivalent build for other systems (build.sh on macOS)
+    gzip = os.environ.get("RAREZIP_GZIP") or os.path.join(os.path.dirname(os.path.realpath(__file__)), "gzip")
     args = [gzip, f"-{level}", "--no-name", "-c", filepath]
     res = subprocess.run(args, capture_output=True)
     if res.returncode != 0:

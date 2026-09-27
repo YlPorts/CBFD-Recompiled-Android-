@@ -55,7 +55,9 @@ int main(){
     // Numeric comparison of old ((V*W)*p) and new (V*(W*p)) shader expressions.
     std::uniform_real_distribution<float> v(-4,4);double maxError=0;
     for(int n=0;n<4000;++n){float a[4][4],b[4][4],p[4],c[4][4]{},bp[4]{},old[4]{},now[4]{};
-        for(auto& row:a)for(float& x:row)x=v(rng);for(auto& row:b)for(float& x:row)x=v(rng);for(float& x:p)x=v(rng);
+        for(auto& row:a) { for(float& x:row) x=v(rng); }
+        for(auto& row:b) { for(float& x:row) x=v(rng); }
+        for(float& x:p) x=v(rng);
         for(int i=0;i<4;++i)for(int j=0;j<4;++j)for(int k=0;k<4;++k)c[i][j]+=a[i][k]*b[k][j];
         for(int i=0;i<4;++i)for(int j=0;j<4;++j){old[i]+=c[i][j]*p[j];bp[i]+=b[i][j]*p[j];}
         for(int i=0;i<4;++i)for(int j=0;j<4;++j)now[i]+=a[i][j]*bp[j];

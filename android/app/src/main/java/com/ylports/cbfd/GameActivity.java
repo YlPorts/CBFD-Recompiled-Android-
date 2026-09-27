@@ -14,6 +14,8 @@ import org.libsdl.app.SDLActivity;
 
 public final class GameActivity extends SDLActivity {
     private TouchControls touch;
+    private boolean manageRomsAfterExit;
+    private android.app.AlertDialog exitDialog;
     static native void nativeInput(int buttons, float x, float y);
     static native void nativeCamera(float x, float y);
     private static native void nativeSurface(Surface surface, int width, int height);
@@ -56,7 +58,7 @@ public final class GameActivity extends SDLActivity {
             @Override public void surfaceChanged(SurfaceHolder holder,int format,int width,int height) {
                 nativeSurface(holder.getSurface(),width,height);
                 applyRate(holder);
-                StartupDiagnostics.log("Native Surface="+width+"x"+height+"; fixed2x; lifecycle publish; build=blend-surface-018");
+                StartupDiagnostics.log("Native Surface="+width+"x"+height+"; fixed2x; lifecycle publish; build=pc-v011-019");
                 super.surfaceChanged(holder,format,width,height);
             }
             @Override public void surfaceDestroyed(SurfaceHolder holder) {
@@ -107,15 +109,41 @@ public final class GameActivity extends SDLActivity {
         super.onResume();
         if (!mBrokenLibraries) nativeForeground(true);
     }
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        // SDL consumes hardware Back before Activity.onBackPressed; keep both
+        // hardware buttons and system gestures on the same ROM-menu path.
+        if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK) {
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP && !event.isCanceled()) onBackPressed();
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
     @Override public void onBackPressed() {
         if (mBrokenLibraries) { finish(); return; }
-        nativeRequestQuit();
+        if (exitDialog != null && exitDialog.isShowing()) return;
+        if (touch != null) touch.releaseAll();
+        exitDialog = new android.app.AlertDialog.Builder(this)
+            .setTitle("Conker Recompiled")
+            .setMessage("Puedes continuar, salir o cambiar la ROM.")
+            .setNeutralButton("Continuar", (dialog, which) -> Immersive.apply(this))
+            .setNegativeButton("Salir", (dialog, which) -> nativeRequestQuit())
+            .setPositiveButton("Cambiar ROM", (dialog, which) -> {
+                manageRomsAfterExit = true;
+                nativeRequestQuit();
+            }).create();
+        exitDialog.show();
     }
     @Override protected void onDestroy() {
         if (touch != null) touch.releaseAll();
         // SDL joins its native thread here; don't kill it before saves have flushed.
         super.onDestroy();
         StartupDiagnostics.gameDestroyed(mBrokenLibraries);
+        if (manageRomsAfterExit && isFinishing() && !isChangingConfigurations()) {
+            // SDL has joined the game/save threads before another process changes ROM files.
+            startActivity(new android.content.Intent(this, LauncherActivity.class)
+                .putExtra(LauncherActivity.MANAGE_ROMS, true)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP));
+        }
         // Runtime globals are single-start. Only this isolated :game process is ended.
         if (isFinishing() && !isChangingConfigurations()) android.os.Process.killProcess(android.os.Process.myPid());
     }

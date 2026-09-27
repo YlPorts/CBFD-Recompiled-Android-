@@ -10,9 +10,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 set(GENERATED "${ROOT}/RecompiledFuncs")
 if(NOT EXISTS "${GENERATED}/inputs.sha256")
-    message(FATAL_ERROR "Falta el juego recompilado. Genera RecompiledFuncs con tu ROM USA usando recomp/run.sh. No hay target de APK vacía.")
+    message(FATAL_ERROR "Falta el juego recompilado. Genera RecompiledFuncs con tu ROM USA usando recomp/recompile.py. No hay target de APK vacía.")
 endif()
-set(RECOMP_INPUTS conker.toml recomp/prepare_elf.py recomp/n64recomp.patch recomp/emit_tlb_pages.py recomp/audio_ucode.toml)
+set(RECOMP_INPUTS conker.toml recomp/conker.us.syms.toml recomp/code_rewrites.txt recomp/n64recomp.patch recomp/unpack_rom.py recomp/emit_tlb_pages.py recomp/audio_ucode.toml)
 file(READ "${GENERATED}/inputs.sha256" ACTUAL)
 set(EXPECTED "")
 foreach(input IN LISTS RECOMP_INPUTS)
@@ -22,7 +22,7 @@ foreach(input IN LISTS RECOMP_INPUTS)
     string(APPEND EXPECTED "${HASH} ${input}\n")
 endforeach()
 if(NOT ACTUAL STREQUAL EXPECTED)
-    message(FATAL_ERROR "RecompiledFuncs está desactualizado; vuelve a ejecutar recomp/run.sh.")
+    message(FATAL_ERROR "RecompiledFuncs está desactualizado; vuelve a ejecutar recomp/recompile.py.")
 endif()
 set(SDL_SHARED ON CACHE BOOL "" FORCE)
 set(SDL_STATIC OFF CACHE BOOL "" FORCE)
@@ -50,9 +50,15 @@ if(NOT FUNCS)
 endif()
 # Replace only the verified function definition in a PRIVATE build-directory copy.
 # Calls and overlay table entries still resolve func_15123508 to the native hook.
-set(CAMERA_INPUT_SOURCE "${GENERATED}/funcs_9.c")
-set(CAMERA_INPUT_COPY "${CMAKE_CURRENT_BINARY_DIR}/generated/funcs_9_camera.c")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/game_sources.py" "${GENERATED}"
+    OUTPUT_VARIABLE CAMERA_INPUT_SOURCE OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE CAMERA_INPUT_RESULT)
+if(NOT CAMERA_INPUT_RESULT EQUAL 0)
+    message(FATAL_ERROR "No se pudo localizar la función original de cámara.")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${GENERATED}/inputs.sha256")
+set(CAMERA_INPUT_COPY "${CMAKE_CURRENT_BINARY_DIR}/generated/camera_translation_unit.c")
 add_custom_command(OUTPUT "${CAMERA_INPUT_COPY}"
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/prepare_camera_hook.py" "${CAMERA_INPUT_SOURCE}" "${CAMERA_INPUT_COPY}"
     DEPENDS "${CAMERA_INPUT_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/prepare_camera_hook.py" VERBATIM)
@@ -64,7 +70,8 @@ target_compile_options(ConkerGame PRIVATE -include setjmp.h -fno-strict-aliasing
 add_library(main SHARED native/android_host.cpp native/rt64_renderer.cpp native/mobile_camera.cpp
     native/audio_output.cpp "${ROOT}/host/src/overlays.cpp"
     "${ROOT}/host/src/ultra_extras.cpp" "${ROOT}/host/src/mod_api.cpp"
-    "${ROOT}/host/src/widescreen.cpp" "${GENERATED}/rsp/audio_ucode.cpp")
+    "${ROOT}/host/src/widescreen.cpp" "${ROOT}/host/src/interpolation.cpp"
+    "${ROOT}/host/src/rom_versions.cpp" "${GENERATED}/rsp/audio_ucode.cpp")
 target_compile_definitions(main PRIVATE CONKER_RT64)
 target_compile_options(main PRIVATE -fno-strict-aliasing -fms-extensions)
 target_include_directories(main PRIVATE "${ROOT}/host/src" "${GENERATED}"

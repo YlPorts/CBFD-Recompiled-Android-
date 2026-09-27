@@ -174,8 +174,8 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         setvbuf(stderr, nullptr, _IOLBF, 0);
         dup2(fileno(stderr), STDOUT_FILENO);
         setvbuf(stdout, nullptr, _IOLBF, 0);
-        std::ofstream(state / "running.marker") << "Conker Android 0.1.8-alpha\n";
-        std::fprintf(stderr, "[startup] Conker Android 0.1.8-alpha ARM64; build=blend-surface-018; target=60; aspect=Expand; internal=fixed2x; noDRS\n");
+        std::ofstream(state / "running.marker") << "Conker Android 0.1.9-alpha\n";
+        std::fprintf(stderr, "[startup] Conker Android 0.1.9-alpha ARM64; build=pc-v011-019; target=60; aspect=Expand; internal=fixed2x; noDRS\n");
         // Validate storage on SDL_main before spawning RT64's graphics thread.
         // This uses --data from Android getFilesDir(), never HOME or /data.
         const auto renderer_path = conker::android::rt64_data_path(state);
@@ -183,7 +183,8 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         recomp::register_config_path(state);
         ultramodern::renderer::set_graphics_config(mobile_profile());
         recomp::GameEntry game{};
-        game.rom_hash = 0x23FBBA2DBCF2FD8EULL;
+        game.rom_hash = conker::roms::us_rom_hash;
+        game.accept_rom = conker::roms::accept;
         game.internal_name = "CONKER BFD";
         game.display_name = "Conker's Bad Fur Day";
         game.game_id = game_id;
@@ -202,13 +203,13 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** 
         conker::register_mod_exports();
         std::fprintf(stderr, "[startup] Validating imported ROM\n");
         if (recomp::select_rom(rom, game_id) != recomp::RomValidationError::Good) {
-            throw std::runtime_error("ROM incompatible: usa Conker's Bad Fur Day USA sin modificar.");
+            throw std::runtime_error("ROM incompatible: necesita el código original USA; los cambios de recursos son compatibles.");
         }
         char program[] = "conker-android", flag[] = "--game", name[] = "conker";
         char* args[] = {program, flag, name, nullptr};
         recomp::Configuration cfg{};
         cfg.argc = 3; cfg.argv = args;
-        cfg.project_version = recomp::Version{0, 1, 7};
+        cfg.project_version = recomp::Version{0, 1, 9};
         cfg.rsp_callbacks.get_rsp_microcode = rsp;
         cfg.audio_callbacks = {conker::audio::queue_samples, conker::audio::get_frames_remaining, conker::audio::set_frequency};
         cfg.renderer_callbacks.create_render_context = create_android_renderer;
