@@ -88,8 +88,26 @@ jobs:
         run: python3 -m py_compile android/tools/build_apk.py android/tools/patch_dependencies.py android/tools/test_pc_sync.py android/tools/test_mobile.py android/tools/test_vulkan_surface.py
       - name: Verify exact upstream PC 0.1.2 shared files
         run: python3 android/tools/test_pc_sync.py
-      - name: Compile PC librecomp mod launcher bridge
+      - name: Prepare pinned SDL headers
+        run: python3 android/tools/prepare.py --dependencies
+      - name: Compile direct-port native adapters
         run: |
-          g++ -std=c++20 -fsyntax-only             -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux"             -Itools/N64ModernRuntime/librecomp/include             -Itools/N64ModernRuntime/N64Recomp/include             -Itools/N64ModernRuntime/thirdparty             android/native/launcher_mods.cpp
+          INC=(
+            -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux"
+            -Iandroid/.deps/SDL/include -Iandroid/native -Ihost/src
+            -Itools/N64ModernRuntime/librecomp/include
+            -Itools/N64ModernRuntime/N64Recomp/include
+            -Itools/N64ModernRuntime/ultramodern/include
+            -Itools/N64ModernRuntime/thirdparty
+            -Itools/N64ModernRuntime/thirdparty/concurrentqueue
+            -Itools/rt64/src -Itools/rt64/src/contrib
+            -Itools/rt64/src/contrib/plume -Itools/rt64/src/contrib/imgui
+            -Itools/rt64/src/contrib/hlslpp/include
+            -Itools/rt64/src/contrib/mupen64plus-core/src/api
+          )
+          CXXFLAGS=(-std=c++20 -fsyntax-only -fno-strict-aliasing -DHLSL_CPU -DCONKER_RT64 -DRT64_SDL_WINDOW_VULKAN -DPLUME_SDL_VULKAN_ENABLED)
+          g++ "${CXXFLAGS[@]}" "${INC[@]}" android/native/launcher_mods.cpp
+          g++ "${CXXFLAGS[@]}" "${INC[@]}" android/native/rt64_renderer.cpp
+          g++ "${CXXFLAGS[@]}" "${INC[@]}" android/native/android_host.cpp
       - name: Verify Android Vulkan presentation glue
         run: python3 android/tools/test_vulkan_surface.py
