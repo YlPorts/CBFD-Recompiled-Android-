@@ -1,6 +1,6 @@
 <img width="1360" height="768" alt="image" src="https://github.com/user-attachments/assets/abb979d7-24a5-44f8-98d3-088ba2054a74" />
 
-> **Android 0.1.15-alpha:** Vulkan/RT64 y OpenGL ES 3 seleccionables sobre PC V0.1.1. En Mali-G57, Vulkan usa la ruta de mezcla RGB/cobertura de una sola fuente para aislar las desapariciones de agua observadas en el SM-A155M, sin bajar la resolución. Instrucciones, límites y compilación en [android/README.md](android/README.md).
+> **Android — direct PC 0.1.2 port:** la rama `android/pc-0.1.2-direct-port` usa el juego, hooks widescreen/interpolación y parches principales exactamente de PC 0.1.2 (`152cc380`). Android conserva sólo ARM64/SDL, controles táctiles, almacenamiento, Vulkan WSI y empaquetado APK. La interfaz móvil replica el flujo y las opciones gráficas de RecompFrontend. Detalles en [android/README.md](android/README.md).
 
 # Conker's Bad Fur Day: Recompiled
 
