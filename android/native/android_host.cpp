@@ -121,26 +121,33 @@ void pump(void*) {
         auto key = [&](SDL_GameControllerButton button, uint16_t bit) {
             if (SDL_GameControllerGetButton(controller, button)) next.buttons |= bit;
         };
-        key(SDL_CONTROLLER_BUTTON_A, 0x8000);
-        key(SDL_CONTROLLER_BUTTON_B, 0x4000);
-        key(SDL_CONTROLLER_BUTTON_X, 0x2000);
+        // RecompFrontend PC 0.1.2 default controller profile.
+        key(SDL_CONTROLLER_BUTTON_A, 0x8000);              // South -> N64 A
+        key(SDL_CONTROLLER_BUTTON_X, 0x4000);              // West  -> N64 B
+        key(SDL_CONTROLLER_BUTTON_LEFTSHOULDER, 0x0020);   // LB    -> N64 L
         key(SDL_CONTROLLER_BUTTON_START, 0x1000);
-        key(SDL_CONTROLLER_BUTTON_LEFTSHOULDER, 0x0020);
-        key(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, 0x0010);
         key(SDL_CONTROLLER_BUTTON_DPAD_UP, 0x0800);
         key(SDL_CONTROLLER_BUTTON_DPAD_DOWN, 0x0400);
         key(SDL_CONTROLLER_BUTTON_DPAD_LEFT, 0x0200);
         key(SDL_CONTROLLER_BUTTON_DPAD_RIGHT, 0x0100);
-        if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 12000) next.buttons |= 0x2000;
 
-        // PC/original behavior: right stick is a convenient mapping to N64 C-buttons.
+        constexpr int triggerThreshold = 12000;
+        if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > triggerThreshold)
+            next.buttons |= 0x2000; // LT -> Z
+        if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > triggerThreshold)
+            next.buttons |= 0x0010; // RT -> R
+
         const int rx = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX);
         const int ry = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY);
         constexpr int cThreshold = 12000;
-        if (rx < -cThreshold) next.buttons |= 0x0002;
-        if (rx >  cThreshold) next.buttons |= 0x0001;
-        if (ry < -cThreshold) next.buttons |= 0x0008;
-        if (ry >  cThreshold) next.buttons |= 0x0004;
+        if (rx < -cThreshold || SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_Y))
+            next.buttons |= 0x0002; // C-left: right stick left or North/Y
+        if (rx > cThreshold || SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B))
+            next.buttons |= 0x0001; // C-right: right stick right or East/B
+        if (ry < -cThreshold || SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_RIGHTSTICK))
+            next.buttons |= 0x0008; // C-up: right stick up or R3
+        if (ry > cThreshold || SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER))
+            next.buttons |= 0x0004; // C-down: right stick down or RB
 
         next.x = std::clamp(SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f, -1.f, 1.f);
         next.y = std::clamp(-SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f, -1.f, 1.f);
