@@ -85,6 +85,8 @@ jobs:
           python3 android/tools/test_pc_sync.py
           python3 android/tools/test_render_010.py
           python3 android/tools/test_render_011.py
+          python3 android/tools/test_shader_workers_012.py
+          python3 android/tools/test_visibility_012.py
           python3 android/tools/test_mobile.py
           python3 android/tools/test_matcher_math.py
           python3 android/tools/test_native_render_017.py

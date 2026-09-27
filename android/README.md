@@ -1,4 +1,4 @@
-# Conker Recompiled Android 0.1.11-alpha
+# Conker Recompiled Android 0.1.12-alpha
 
 Integra PC **V0.1.1**, commit `48e10dce99b9de6146b1d449d8fab538bbc7c55b`, sobre el código completo de Android 0.1.8 recuperado y versionado en esta rama.
 
@@ -9,11 +9,15 @@ Integra PC **V0.1.1**, commit `48e10dce99b9de6146b1d449d8fab538bbc7c55b`, sobre 
 - Actualización del runtime, incluido el arreglo de arranque con mods de PC. Esto no añade un gestor Android de archivos `.nrm`.
 - Recompilación desde los símbolos publicados por PC; cámara orbital localizada automáticamente aunque cambie el archivo generado que la contiene.
 
+La versión 0.1.12 sincroniza los planos horizontales de visibilidad del juego con el mismo factor panorámico que usa RT64. La versión anterior ampliaba la imagen pero seguía descartando objetos con el campo horizontal original. Conserva el descarte vertical, la profundidad y las distancias originales. La prueba ejecuta el constructor de planos y el descarte originales de Conker: reproduce el fallo lateral de 0.1.11 y verifica 45.800 casos/aserciones con la corrección. Esto no sustituye una prueba del agua y la vegetación en el dispositivo.
+
+También corrige una carrera de arranque/cierre de los hilos de shaders y sustituye la espera activa de recompilación por una condición. Los nuevos diagnósticos muestran el factor de visibilidad, actualizaciones de planos, shaders compilados y usos de shaders especializados/generales. Estos cambios no demuestran por sí solos una mejora de FPS.
+
 La versión 0.1.11 corrige el cálculo de límites del framebuffer para geometría visible en los laterales panorámicos. También impide niveles de mipmap negativos y calcula su distancia con los mismos desplazamientos UV que el muestreo. Conserva el alfa de las texturas; la corrección de mipmaps afecta a reemplazos que tengan una cadena de mipmaps. El LOD original de N64 queda definido para coordenadas constantes. Las pruebas usan el shader completo para comparar materiales transparentes y opacos con la mezcla de PC.
 
-Se mantienen **1080 píxeles internos de alto**, calculando la escala según la VI del juego (4.5x para 240 líneas), Surface nativa y aspecto Expand: en una pantalla 2340x1080, el objetivo panorámico es 2340x1080. No usa resolución dinámica. Conserva Vulkan/RT64, ARM64, cámara táctil, objetivo de presentación 60 FPS, audio, rutas privadas y guardados. La APK usa `com.ylports.cbfd`, versionCode 12 y el certificado original.
+Se mantienen **1080 píxeles internos de alto**, calculando la escala según la VI del juego (4.5x para 240 líneas), Surface nativa y aspecto Expand: en una pantalla 2340x1080, el objetivo panorámico es 2340x1080. No usa resolución dinámica. Conserva Vulkan/RT64, ARM64, cámara táctil, objetivo de presentación 60 FPS, audio, rutas privadas y guardados. La APK usa `com.ylports.cbfd`, versionCode 13 y el certificado original.
 
-La pasada de cobertura elimina cálculos de color que no escribe, y evita dividir por triángulo cuando no hay dependencia de profundidad. Conserva el orden para superficies superpuestas que comparan/escriben Z. También evita compilar shaders que no usará. La prueba Vulkan por software compara esta ruta con la mezcla dual de PC. **1080p/60 FPS sostenidos y los errores visuales del juego todavía requieren una prueba en el A15.** Subir desde 2x a 4.5x aumenta aproximadamente 5.06 veces el número de píxeles; las optimizaciones no demuestran que la GPU pueda mantener 60 FPS.
+La pasada de cobertura elimina cálculos de color que no escribe, y evita dividir por triángulo cuando no hay dependencia de profundidad. Conserva el orden para superficies superpuestas que comparan/escriben Z. También evita compilar shaders que no usará. La prueba Vulkan por software compara esta ruta con la mezcla dual de PC. **El registro de 0.1.11 en el SM-A155M confirma 2340x1080 internos, unos 17–26 FPS renderizados y 28–47 ms de GPU. No mantiene 60 FPS.** La GPU anuncia mezcla dual y no usa las pasadas alternativas de cobertura. Esta entrega mantiene 1080 líneas internas; 60 FPS necesitaría unos 16,7 ms por imagen. No hay una medición de rendimiento ni validación visual de 0.1.12 en el A15 todavía.
 
 Para medir: juega diez minutos en la zona problemática, mantén START pulsado 1.5 segundos y pega el diagnóstico. Incluye una captura del defecto visual. El informe registra VI, Surface, tamaño de la textura presentada, tiempos CPU/GPU, FPS de render/envío y estado térmico de Android. Los FPS de envío no miden directamente lo que escanea la pantalla.
 
@@ -54,9 +58,11 @@ CXX=g++ python3 android/tools/test_queues018.py
 python3 android/tools/test_pc_sync.py --rom conker/baserom.us.z64
 python3 android/tools/test_render_010.py
 python3 android/tools/test_render_011.py
+CXX=g++ python3 android/tools/test_shader_workers_012.py
+CXX=g++ CC=gcc python3 android/tools/test_visibility_012.py --require-game
 # Requiere compilador/CMake/Ninja, DXC, cabeceras X11 y un ICD Vulkan:
 python3 android/tools/test_gpu018.py
 python3 android/tools/test_gpu011.py
 ```
 
-La prueba de ROM modifica únicamente copias temporales locales; no exporta datos del juego. Las pruebas de cámara usan la rutina original regenerada. CI omite las pruebas que necesitan ROM y lo informa; no declara gameplay validado. Evidencia: [0.1.11 revisión visual](reports/0.1.11-visual.md), [0.1.10 render](reports/0.1.10-render.md), [sincronización PC](reports/0.1.9-pc-sync.md).
+La prueba de ROM modifica únicamente copias temporales locales; no exporta datos del juego. Las pruebas de cámara usan la rutina original regenerada. CI omite las pruebas que necesitan ROM y lo informa; no declara gameplay validado. Evidencia: [0.1.12 visibilidad y shaders](reports/0.1.12-visibility.md), [0.1.11 revisión visual](reports/0.1.11-visual.md), [0.1.10 render](reports/0.1.10-render.md), [sincronización PC](reports/0.1.9-pc-sync.md).

@@ -58,6 +58,12 @@ class AndroidRenderer final : public RendererContext {
             (unsigned long long)(behind-lastBehind),(unsigned long long)(clipped-lastClipped));
         lastPairs=pairs;lastAvoided=avoided;lastRejected=rejected;lastBehind=behind;lastClipped=clipped;
         const auto camera=conker::camera::counters();
+        std::fprintf(stderr,"[visibility-shaders] horizontalScale=%.4f frustumUpdates=%llu specializedDraws=%llu uberDraws=%llu compiledShaders=%u\n",
+            m.horizontalAspect.load(std::memory_order_relaxed),
+            (unsigned long long)m.frustumUpdates.load(std::memory_order_relaxed),
+            (unsigned long long)m.specializedDraws.load(std::memory_order_relaxed),
+            (unsigned long long)m.uberDraws.load(std::memory_order_relaxed),
+            app->rasterShaderCache->shaderCount());
         std::fprintf(stderr,"[render-detail] modifyXY=%llu modifyZ=%llu inheritedEdits=%llu mergedEdits=%llu cameraHooks=%llu cameraAllowed=%llu cameraUpdates=%llu cameraBlocked=%llu fullWidthClears=%llu quality=fixed1080\n",
             (unsigned long long)modifyXY,(unsigned long long)modifyZ,(unsigned long long)modifyClones,(unsigned long long)modifyMerged,
             (unsigned long long)camera.hooks,(unsigned long long)camera.allowed,(unsigned long long)camera.updates,(unsigned long long)camera.blocked,

@@ -1,0 +1,73 @@
+{
+  "version": "0.1.12-alpha",
+  "version_code": 13,
+  "base_android_commit": "23a0d9e106cd1eecd7409bb11fb5e5b84246381b",
+  "pc_commit": "48e10dce99b9de6146b1d449d8fab538bbc7c55b",
+  "apk": {
+    "filename": "Conker-Recompiled-0.1.12-alpha-arm64.apk",
+    "bytes": 24674923,
+    "sha256": "bf6fa2c31157e21ed6720a0316219ce8f102f775198f4622fc6924b66b825e2f",
+    "libraries": [
+      {
+        "name": "lib/arm64-v8a/libmain.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384
+        ]
+      },
+      {
+        "name": "lib/arm64-v8a/libSDL2.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384
+        ]
+      },
+      {
+        "name": "lib/arm64-v8a/libc++_shared.so",
+        "arch": "AArch64",
+        "load_alignments": [
+          16384,
+          16384,
+          16384,
+          16384
+        ]
+      }
+    ],
+    "certificate_sha256": "fe28ed682f9f86119e5ebc8eeb6478cbd5bf664b98d0352602a055976b65bffe",
+    "v2": true,
+    "v3": true,
+    "zip_alignment": 16384
+  },
+  "visibility_original_game_assertions": 45800,
+  "previous_visibility_regression_reproduced": true,
+  "shader_worker_controlled_shutdown_test": true,
+  "previous_shader_shutdown_failure_reproduced": true,
+  "native_camera_original_game_assertions": 52,
+  "native_render_policy_assertions": 29609,
+  "original_game_visibility_tests_in_public_ci": "skipped without private generated sources",
+  "configured_internal_height": 1080,
+  "device_gameplay_tested": false,
+  "sustained_60fps_measured": false,
+  "water_in_game_verified": false,
+  "phone_baseline_0_1_11": {
+    "model": "SM-A155M",
+    "gpu": "Mali-G57 MC2",
+    "color_texture": [
+      2340,
+      1080
+    ],
+    "gpu_ms_approx": [
+      28,
+      47
+    ],
+    "rendered_fps_approx": [
+      17,
+      26
+    ],
+    "dual_source_blend": true
+  }
+}

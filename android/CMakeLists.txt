@@ -49,25 +49,34 @@ if(NOT FUNCS)
     message(FATAL_ERROR "No hay funciones recompiladas de Conker.")
 endif()
 # Replace only the verified function definition in a PRIVATE build-directory copy.
-# Calls and overlay table entries still resolve func_15123508 to the native hook.
+# Calls and overlay table entries still resolve the original names to native hooks.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/game_sources.py" "${GENERATED}"
-    OUTPUT_VARIABLE CAMERA_INPUT_SOURCE OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE CAMERA_INPUT_RESULT)
-if(NOT CAMERA_INPUT_RESULT EQUAL 0)
-    message(FATAL_ERROR "No se pudo localizar la función original de cámara.")
-endif()
+set(HOOK_SOURCES)
+foreach(HOOK_SYMBOL func_15123508 func_1501B22C)
+    execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/game_sources.py" "${GENERATED}" "${HOOK_SYMBOL}"
+        OUTPUT_VARIABLE HOOK_SOURCE OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE HOOK_RESULT)
+    if(NOT HOOK_RESULT EQUAL 0)
+        message(FATAL_ERROR "No se pudo localizar la función original ${HOOK_SYMBOL}.")
+    endif()
+    list(APPEND HOOK_SOURCES "${HOOK_SOURCE}")
+endforeach()
+list(REMOVE_DUPLICATES HOOK_SOURCES)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${GENERATED}/inputs.sha256")
-set(CAMERA_INPUT_COPY "${CMAKE_CURRENT_BINARY_DIR}/generated/camera_translation_unit.c")
-add_custom_command(OUTPUT "${CAMERA_INPUT_COPY}"
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/prepare_camera_hook.py" "${CAMERA_INPUT_SOURCE}" "${CAMERA_INPUT_COPY}"
-    DEPENDS "${CAMERA_INPUT_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/prepare_camera_hook.py" VERBATIM)
-list(REMOVE_ITEM FUNCS "${CAMERA_INPUT_SOURCE}")
-add_library(ConkerGame STATIC ${FUNCS} "${CAMERA_INPUT_COPY}" "${GENERATED}/tlb_pages.c")
+set(HOOK_COPIES)
+foreach(HOOK_SOURCE IN LISTS HOOK_SOURCES)
+    get_filename_component(HOOK_NAME "${HOOK_SOURCE}" NAME)
+    set(HOOK_COPY "${CMAKE_CURRENT_BINARY_DIR}/generated/hook_${HOOK_NAME}")
+    add_custom_command(OUTPUT "${HOOK_COPY}"
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/prepare_camera_hook.py" "${HOOK_SOURCE}" "${HOOK_COPY}"
+        DEPENDS "${HOOK_SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/prepare_camera_hook.py" VERBATIM)
+    list(REMOVE_ITEM FUNCS "${HOOK_SOURCE}")
+    list(APPEND HOOK_COPIES "${HOOK_COPY}")
+endforeach()
+add_library(ConkerGame STATIC ${FUNCS} ${HOOK_COPIES} "${GENERATED}/tlb_pages.c")
 target_include_directories(ConkerGame PRIVATE "${GENERATED}" "${ROOT}/tools/N64ModernRuntime/N64Recomp/include")
 target_compile_options(ConkerGame PRIVATE -include setjmp.h -fno-strict-aliasing
     -Wno-implicit-function-declaration -Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable)
-add_library(main SHARED native/android_host.cpp native/rt64_renderer.cpp native/mobile_camera.cpp
+add_library(main SHARED native/android_host.cpp native/rt64_renderer.cpp native/mobile_camera.cpp native/mobile_frustum.cpp
     native/audio_output.cpp "${ROOT}/host/src/overlays.cpp"
     "${ROOT}/host/src/ultra_extras.cpp" "${ROOT}/host/src/mod_api.cpp"
     "${ROOT}/host/src/widescreen.cpp" "${ROOT}/host/src/interpolation.cpp"

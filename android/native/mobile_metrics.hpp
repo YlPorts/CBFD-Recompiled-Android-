@@ -7,6 +7,8 @@ namespace conker::mobile {
 // Each producer only publishes counters; the graphics thread consumes snapshots.
 // Submission FPS is NOT display scan-out FPS. No per-frame file I/O or UI polling.
 struct Metrics {
+    std::atomic<float> horizontalAspect{1.0f};
+    std::atomic<uint64_t> frustumUpdates{0}, specializedDraws{0}, uberDraws{0};
     std::atomic<uint32_t> verticalScaleMilli{4500};
     std::atomic<uint64_t> viSize{0}, surfaceSize{0}, presentedSize{0};
     std::atomic<uint64_t> singleSourceDraws{0}, coveragePasses{0}, depthOrderedTriangles{0};

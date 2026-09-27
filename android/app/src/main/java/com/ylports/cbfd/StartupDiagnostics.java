@@ -11,7 +11,7 @@ import java.util.List;
 
 /** App-private crash evidence only. No network, analytics or storage permission. */
 final class StartupDiagnostics {
-    static final String VERSION = "0.1.11-alpha";
+    static final String VERSION = "0.1.12-alpha";
     private static Context app;
 
     static void install(Context context) {
