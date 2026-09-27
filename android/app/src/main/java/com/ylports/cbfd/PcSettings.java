@@ -130,7 +130,7 @@ final class PcSettings {
                 "Reset touch controls"},(d,which)->{
                 if(which==0){ setTouch(a,!touch(a)); if(changed!=null)changed.run(); }
                 else if(which==1) new AlertDialog.Builder(a).setTitle("Controller")
-                    .setMessage("Left stick: N64 stick\nRight stick: C buttons\nA/B: A/B\nX or LT: Z\nLB/RB: L/R\nStart: Start\nD-pad: N64 D-pad\nRumble Pak supported.")
+                    .setMessage("PC 0.1.2 default controller profile:\nLeft stick: N64 stick\nA/South: A\nX/West: B\nLB: L\nRT: R\nLT: Z\nStart: Start\nRight stick: C buttons\nY/North: C-left\nB/East: C-right\nR3: C-up\nRB: C-down\nD-pad: N64 D-pad\nRumble Pak supported.")
                     .setPositiveButton("OK",null).show();
                 else { setTouch(a,true); if(changed!=null)changed.run(); }
             }).setNegativeButton("Close",null).show();
